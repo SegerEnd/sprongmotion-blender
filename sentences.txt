@@ -1,0 +1,310 @@
+a person walks forward slowly
+a person walks forward quickly
+a person walks forward and stops
+a person walks forward and turns around
+a person walks forward and sits down on a chair
+a person walks forward and waves
+a person walks forward while looking at their phone
+a person walks forward carrying a heavy box
+a person walks forward with their hands in their pockets
+a person walks backward slowly
+a person walks backward carefully
+a person walks to the left
+a person walks to the right
+a person walks in a small circle
+a person walks in a big circle
+a person walks up the stairs
+a person walks down the stairs
+a person walks on a narrow beam
+a person walks on their toes
+a person walks with a limp
+a person walks like a zombie
+a person walks like a robot
+a person walks proudly with their chest out
+a person walks sadly with their head down
+a person walks happily and swings their arms
+a person walks tired and drags their feet
+a person walks sneakily on tiptoe
+a person walks in place
+a person walks forward then runs
+a person walks around in a square
+a person strolls forward casually
+a person marches forward like a soldier
+a person marches in place
+a person paces back and forth
+a person runs forward
+a person runs forward fast
+a person runs forward and jumps
+a person runs forward and stops suddenly
+a person runs in a circle
+a person runs in place
+a person runs backward
+a person runs to the left
+a person runs to the right
+a person jogs forward
+a person jogs in place
+a person jogs slowly in a circle
+a person sprints forward
+a person sprints and then slows down
+a person skips forward happily
+a person gallops forward like a horse
+a person crawls forward on hands and knees
+a person crawls backward
+a person crawls on their stomach
+a person sidesteps to the left and back
+a person shuffles to the side
+a person tiptoes forward quietly
+a person limps forward holding their leg
+a person staggers forward like they are drunk
+a person stumbles and almost falls
+a person trips and falls forward
+a person slips and falls on their back
+a person falls down and gets back up
+a person falls to their knees
+a person gets up from the ground
+a person gets up from lying on their back
+a person lies down on the floor
+a person lies on their back
+a person rolls over on the ground
+a person rolls forward
+a person does a forward roll
+a person does a cartwheel
+a person does a backflip
+a person does a front flip
+a person does a handstand
+a person does push ups
+a person does sit ups
+a person does squats
+a person does jumping jacks
+a person does lunges
+a person stretches their arms over their head
+a person stretches their legs
+a person stretches to the side
+a person bends down to touch their toes
+a person bends over and picks something up
+a person picks up a box from the floor
+a person picks something up and puts it on a shelf
+a person puts something down on the floor
+a person carries a box and puts it down
+a person lifts a heavy object
+a person throws a ball forward
+a person throws a ball with their right hand
+a person catches a ball
+a person kicks a ball forward
+a person kicks forward with their right leg
+a person kicks to the side
+a person kicks high
+a person punches forward
+a person punches with both hands
+a person throws a left punch and a right punch
+a person boxes in place
+a person blocks a punch
+a person dodges to the side
+a person ducks down quickly
+a person swings a sword
+a person swings a baseball bat
+a person swings a golf club
+a person swings a tennis racket
+a person shoots a basketball
+a person dribbles a basketball
+a person serves a volleyball
+a person throws a ball overhand
+a person bowls a ball
+a person rows a boat
+a person paddles a boat
+a person swims forward
+a person climbs a ladder
+a person climbs up a wall
+a person climbs over a fence
+a person climbs up onto a ledge
+a person hangs from a bar
+a person does pull ups
+a person jumps up and down
+a person jumps forward
+a person jumps forward with both feet
+a person jumps backward
+a person jumps to the left
+a person jumps to the right
+a person jumps over an obstacle
+a person jumps high in the air
+a person jumps and spins around
+a person jumps and lands on one foot
+a person jumps rope
+a person leaps forward
+a person leaps over a puddle
+a person hops forward on one foot
+a person hops in place
+a person hops like a bunny
+a person hops like a frog
+a person turns around
+a person turns around slowly
+a person turns around and walks away
+a person turns to the left and walks
+a person turns to the right and walks
+a person spins around
+a person spins around in place
+a person spins around twice
+a person pivots on one foot
+a person looks around
+a person looks to the left and right
+a person looks up at the sky
+a person looks down at the ground
+a person looks over their shoulder
+a person looks behind them
+a person nods their head
+a person shakes their head
+a person tilts their head to the side
+a person stands still
+a person stands still and breathes
+a person stands and shifts their weight
+a person stands on one leg
+a person stands on one leg and balances
+a person stands with their arms crossed
+a person stands with their hands on their hips
+a person stands up from a chair
+a person stands up slowly
+a person stands up and stretches
+a person sits down on a chair
+a person sits down on the floor
+a person sits down slowly
+a person sits down and crosses their legs
+a person sits and then stands up
+a person sits on the ground with crossed legs
+a person kneels down on one knee
+a person kneels on both knees
+a person kneels and prays
+a person squats down
+a person squats down and stands back up
+a person crouches down low
+a person crouches and sneaks forward
+a person waves hello
+a person waves goodbye
+a person waves with both hands
+a person waves both arms over their head
+a person raises both hands
+a person raises both arms in the air
+a person raises their right arm
+a person raises their left arm
+a person lowers their arms
+a person claps their hands
+a person claps above their head
+a person points forward
+a person points to the left
+a person points to the right
+a person points up
+a person salutes
+a person bows
+a person bows deeply
+a person shrugs their shoulders
+a person scratches their head
+a person rubs their hands together
+a person crosses their arms
+a person puts their hands on their hips
+a person puts their hands behind their back
+a person covers their face with their hands
+a person holds their head in their hands
+a person holds their stomach
+a person blows a kiss
+a person gives a thumbs up
+a person beckons someone to come closer
+a person pushes something heavy
+a person pulls something heavy
+a person pulls a rope
+a person opens a door
+a person opens a door and walks through
+a person knocks on a door
+a person drinks from a cup
+a person eats with a fork
+a person brushes their teeth
+a person combs their hair
+a person washes their hands
+a person wipes a table
+a person sweeps the floor
+a person types on a keyboard
+a person talks on the phone
+a person reads a book
+a person writes on a board
+a person plays the guitar
+a person plays the drums
+a person plays the piano
+a person plays the violin
+a person conducts an orchestra
+a person takes a photo
+a person dances happily
+a person dances slowly
+a person dances with their arms up
+a person dances salsa
+a person dances like a ballerina
+a person does a ballet spin
+a person does a hip hop dance
+a person does a disco dance
+a person does the robot dance
+a person does a moonwalk
+a person breakdances on the floor
+a person sways from side to side
+a person bounces to the music
+a person shakes their hips
+a person moves their arms like waves
+a person does a happy dance
+a person does tai chi
+a person does yoga
+a person does a yoga pose
+a person meditates sitting down
+a person practices karate
+a person practices boxing moves
+a person does a martial arts kick
+a person fights with their fists
+a person celebrates with their arms up
+a person cheers and jumps
+a person pumps their fist
+a person stomps their feet angrily
+a person stomps around angrily
+a person jumps up and down angrily
+a person cries with their face in their hands
+a person laughs and holds their stomach
+a person is scared and backs away
+a person is startled and jumps back
+a person is cold and rubs their arms
+a person is tired and yawns
+a person yawns and stretches
+a person is dizzy and sways
+a person is drunk and stumbles
+a person is old and walks with a cane
+a person is injured and limps
+a person acts like a monkey
+a person acts like a chicken
+a person flaps their arms like a bird
+a person flies like an airplane
+a person swims in the air
+a person mimes pulling a rope
+a person mimes climbing a ladder
+a person walks against strong wind
+a person walks on ice carefully
+a person walks through deep water
+a person wades through water
+a person walks on a balance beam
+a person balances on one foot with arms out
+a person tightrope walks with arms out
+a person rides a bicycle
+a person rides a horse
+a person skates forward
+a person skis down a hill
+a person surfs on a wave
+a person snowboards
+a person hits a nail with a hammer
+a person digs with a shovel
+a person chops wood with an axe
+a person paints a wall
+a person shakes hands with someone
+a person hugs someone
+a person pushes someone away
+a person gets pushed backward
+a person ties their shoes
+a person puts on a jacket
+a person takes off their hat
+a person checks their watch
+a person rubs their eyes
+a person warms up before running
+a person shadow boxes
+a person waits impatiently and taps their foot
+a person paces around nervously

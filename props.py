@@ -1,0 +1,226 @@
+import bpy
+from bpy.props import (
+    BoolProperty,
+    CollectionProperty,
+    EnumProperty,
+    FloatProperty,
+    FloatVectorProperty,
+    IntProperty,
+    PointerProperty,
+    StringProperty,
+)
+
+from . import blocks, engine, paths, rig
+
+
+def _rig(owner):
+    return blocks.player(owner.id_data)
+
+
+def _edited(block, _context):
+    engine.unknown_words(block.text)
+    if obj := _rig(block):
+        blocks.mark_dirty(obj, block.uid)
+
+
+def _reapply(owner, _context):
+    if obj := _rig(owner):
+        engine.edited(obj)
+
+
+def _get_in_place(timeline):
+    return len(timeline.blocks) > 0 and all(b.in_place for b in timeline.blocks)
+
+
+def _set_in_place(timeline, value):
+    for b in timeline.blocks:
+        b["in_place"] = value  # ID writes: one reapply below, not one per block
+    _reapply(timeline, None)
+
+
+TIMELINE = ("blocks", "active", "next_uid", "loop", "path", "path_key", "path_length", "path_fit", "take_due")
+
+
+def upgrade(obj):
+    """Files that keep blocks, Loop and path on the rig: they move bit for bit to the action it plays (made if none, a
+    copy of its own if another rig's blocks are on it already). A rig-wide In Place puts all its blocks in place."""
+    old = (obj.bl_system_properties_get() or {}).get("sprongmotion")
+    if old is None:
+        return
+    if "blocks" in old:
+        ad = obj.animation_data
+        if ad and ad.action and blocks.stored(ad.action) and len(ad.action.sprongmotion.blocks):
+            ad.action = ad.action.copy()
+            ad.action.property_unset("sprongmotion")
+        new = blocks.settings(obj, create=True).id_data.bl_system_properties_get()["sprongmotion"]
+        for k in TIMELINE:
+            if k in old:
+                new[k] = old[k]
+                del old[k]
+    if "in_place" in old:
+        t = blocks.settings(obj)
+        for b in t.blocks if t else ():
+            b["in_place"] = b.in_place or bool(old["in_place"])
+        del old["in_place"]
+
+
+def _preset(settings, _context):
+    rig.fill_map(settings.id_data)
+    engine.edited(settings.id_data)
+
+
+def _locked(block, _context):
+    obj = _rig(block)
+    fitted = obj and (paths.path(obj) is not None or paths.walks_back(block.id_data.sprongmotion, block))
+    if fitted and not block.locked:
+        engine.edited(obj)  # back to the fit
+
+
+def _prompt(settings, _context):
+    if settings.prompt.strip():
+        text, settings.prompt = settings.prompt.strip(), ""
+        blocks.add(settings.id_data, text)
+
+
+def _path(timeline, _context):
+    if obj := _rig(timeline):
+        paths.attached(obj)
+
+
+def _redraw(_self, _context):
+    blocks.redraw()
+
+
+def _get_seconds(block):
+    return (block.end - block.start) / blocks.fps()
+
+
+def _set_seconds(block, value):
+    obj = _rig(block)
+    if obj is None:
+        return
+    i = blocks.find(block.id_data.sprongmotion, block.uid)
+    blocks.resize(obj, i, end=block.start + round(value * blocks.fps()), follow=True)
+    blocks.mark_dirty(obj, block.uid, wait=True)
+
+
+def _overridable(cls):
+    """Editable on library-override armatures (a linked character), like Blender's own properties."""
+    for prop in cls.__annotations__.values():
+        prop.keywords["override"] = {"LIBRARY_OVERRIDABLE"} | (
+            {"USE_INSERTION"} if prop.function is CollectionProperty else set()
+        )
+    return cls
+
+
+class SMBlock(bpy.types.PropertyGroup):
+    uid: IntProperty()
+    text: StringProperty(name="Text", update=_edited)
+    start: IntProperty(name="Start")
+    end: IntProperty(name="End")
+    seconds: FloatProperty(
+        name="Seconds", get=_get_seconds, set=_set_seconds, min=blocks.MIN_SECONDS, max=blocks.MAX_SECONDS, step=10
+    )
+    seed: IntProperty(name="Seed", min=0, max=2**31 - 1, update=_edited)
+    color: FloatVectorProperty(name="Colour", subtype="COLOR", size=3, min=0, max=1, update=_redraw)
+    locked: BoolProperty(
+        name="Locked",
+        description="Keep this block's motion when blocks before it change (resizing it stretches the motion in time). "
+        "With a path: keep its length",
+        update=_locked,
+    )
+    enabled: BoolProperty(name="Enabled", default=True, update=_edited)
+    variants: IntProperty(min=0)
+    variant: IntProperty(name="Take", min=0, update=_reapply)
+    tokens: IntProperty(min=0)
+    dirty: BoolProperty(default=True)
+    remake: BoolProperty(options={"HIDDEN"})  # resized by hand with a path: locked, but made once at its new length
+    path_note: StringProperty()  # why the rig's path is more than this block's motion follows, "" if it fits
+    continues: BoolProperty(
+        name="Continue from Keys",
+        description="Where the rig's own keys end right before this block (or start again right after it), the motion "
+        "continues from them (and leads into them)",
+        default=True,
+        update=_edited,
+    )
+    fresh: BoolProperty(
+        name="Fresh Start",
+        description="Make this block's motion without the block before it, then blend into it over 0.4 s",
+        update=_edited,
+    )
+    in_place: BoolProperty(
+        name="In Place",
+        description="No horizontal root travel in this block: the block after it goes on from where it stands",
+        update=_reapply,
+    )
+    back_to_start: BoolProperty(
+        name="Return to Start",
+        description="This block walks back to where its run started, on a way the add-on makes: its length follows "
+        "it at the block's gait",
+        update=_reapply,
+    )
+    anchor_key: StringProperty(default="|")  # the keys the take joins, anchor.block_keys: "before|after" hashes
+    seam_note: StringProperty()  # why the keys after this block are further off than the take can blend in
+
+
+@_overridable
+class SMBone(bpy.types.PropertyGroup):
+    joint: StringProperty()
+    bone: StringProperty(name="Bone")
+
+
+@_overridable
+class SMSettings(bpy.types.PropertyGroup):
+    """The rig's own settings: the bone map, how takes are made and keyed. The blocks are on the action it plays."""
+
+    prompt: StringProperty(name="Motion", description="Describe a motion: Enter adds it as a block", update=_prompt)
+    preset: EnumProperty(name="Rig", items=rig.PRESET_ITEMS, default="AUTO", update=_preset)
+    bones: CollectionProperty(type=SMBone)
+    variants: IntProperty(name="Takes", description="Takes made per block to pick from", default=1, min=1, max=8)
+    foot_lock: BoolProperty(name="Foot Lock", description="Planted feet stay put", default=True, update=_reapply)
+    key_density: EnumProperty(
+        name="Keys",
+        items=[
+            ("UNBAKED", "Unbaked", "A few Bezier keys that look the same as a key on every frame"),
+            ("EXACT", "Exact", "A key on every frame"),
+        ],
+        update=_reapply,
+    )
+    key_error: FloatProperty(
+        name="Key Error", description="How far unbaked keys may stray (degrees, cm)", default=0.5, min=0.05, max=10,
+        update=_reapply,
+    )  # fmt: skip
+    key_frames: EnumProperty(
+        name="Key Frames",
+        items=[
+            ("BONE", "Per Bone", "Each bone gets the keys it needs"),
+            ("SHARED", "Same Frames", "One set of key frames for all bones, for posing"),
+        ],  # fmt: skip
+        update=_reapply,
+    )
+    auto: BoolProperty(name="Auto", description="Regenerate after every edit", default=True)
+
+
+class SMTimeline(bpy.types.PropertyGroup):
+    """The blocks of an action, with what belongs to its timeline: Loop and the path. Not overridable: the blocks of
+    a linked or overridden action are read-only (data.why_not_editable)."""
+
+    blocks: CollectionProperty(type=SMBlock)
+    active: IntProperty(name="Active block", update=_redraw)
+    next_uid: IntProperty(default=1)
+    loop: BoolProperty(name="Loop", description="The timeline closes into a seamless cycle", update=_reapply)
+    in_place: BoolProperty(
+        name="In Place", description="No horizontal root travel: sets or clears In Place on every block (on when all "
+        "blocks are in place)", get=_get_in_place, set=_set_in_place,
+    )  # fmt: skip
+    path: PointerProperty(
+        type=bpy.types.Object,
+        name="Path",
+        description="A curve the root follows over the whole timeline; the walking blocks' lengths fit it",
+        poll=lambda _s, obj: obj.type == "CURVE",
+        update=_path,
+    )
+    path_key: StringProperty()  # the curve as the keys were last made for it
+    path_length: FloatProperty()  # metres in the model's frame when the block lengths were last fitted to it
+    path_fit: StringProperty()  # the blocks as they were after that fit
+    take_due: BoolProperty(options={"HIDDEN"})  # a take for this state is being made from the timer, in a later step

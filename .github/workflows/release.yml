@@ -1,0 +1,77 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+env:
+  BLENDER_URL: https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+  RUNTIME_REPO: ${{ vars.RUNTIME_REPO || format('{0}/sprongmotion-runtime', github.repository_owner) }}
+  RUNTIME_TAG: ${{ vars.RUNTIME_TAG || 'v1.0.0' }}
+  MODEL_URL: ${{ vars.MODEL_URL }}  # a folder URL with SprongMotion-14M-v1.0-Q8_0.gguf, LICENSE, README.md, NOTICE
+  MODEL_SHA256: 68fbd311a0d7d75f60508b35254171583c85880e7e124140457b57ac84c5de9d
+  GH_TOKEN: ${{ secrets.RUNTIME_TOKEN || github.token }}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest numpy ruff
+      - run: make lint unit PYTHON=python RUFF=ruff
+      - name: Runtime and model
+        run: |
+          mkdir -p ../deps/runtime ../deps/model
+          gh release download "$RUNTIME_TAG" -R "$RUNTIME_REPO" -p "*-linux-x86_64.tar.gz" -D ../deps
+          tar -xzf ../deps/*-linux-x86_64.tar.gz -C ../deps/runtime --strip-components 1
+          for f in SprongMotion-14M-v1.0-Q8_0.gguf LICENSE README.md NOTICE; do
+            curl -fsSL "$MODEL_URL/$f" -o "../deps/model/$f"
+          done
+          echo "$MODEL_SHA256  ../deps/model/SprongMotion-14M-v1.0-Q8_0.gguf" | sha256sum -c
+      - name: Blender
+        run: |
+          sudo apt-get update -q && sudo apt-get install -yq libxi6 libxkbcommon0 libxrender1 libxxf86vm1 libxfixes3 \
+            libsm6 libgl1 libegl1
+          mkdir -p ../blender && curl -fsSL "$BLENDER_URL" | tar -xJ -C ../blender --strip-components 1
+      - run: make test PYTHON=python BLENDER=../blender/blender JOBS=4
+        env:
+          SM_LIB: ${{ github.workspace }}/../deps/runtime/lib/libsprongmotion.so
+          SM_MODEL: ${{ github.workspace }}/../deps/model/SprongMotion-14M-v1.0-Q8_0.gguf
+
+  release:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Runtime, model and Blender
+        run: |
+          mkdir -p ../deps/model ../blender
+          gh release download "$RUNTIME_TAG" -R "$RUNTIME_REPO" -p "*-macos-arm64.tar.gz" -p "*-linux-x86_64.tar.gz" \
+            -p "*-windows-x86_64.tar.gz" -D ../deps
+          for t in ../deps/*.tar.gz; do tar -xzf "$t" -C ../deps; done
+          for f in SprongMotion-14M-v1.0-Q8_0.gguf LICENSE README.md NOTICE; do
+            curl -fsSL "$MODEL_URL/$f" -o "../deps/model/$f"
+          done
+          echo "$MODEL_SHA256  ../deps/model/SprongMotion-14M-v1.0-Q8_0.gguf" | sha256sum -c
+          curl -fsSL "$BLENDER_URL" | tar -xJ -C ../blender --strip-components 1
+      - name: Zips
+        run: |
+          rt=$(ls -d ../deps/sprongmotion-*-linux-x86_64)
+          make release BLENDER=../blender/blender MODEL_DIR=../deps/model RUNTIME=$rt LIBS="\
+            macos-arm64=$(ls ../deps/sprongmotion-*-macos-arm64/lib/libsprongmotion.dylib) \
+            linux-x64=$rt/lib/libsprongmotion.so \
+            windows-x64=$(ls ../deps/sprongmotion-*-windows-x86_64/lib/libsprongmotion.dll)"
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.zip --title "SprongMotion for Blender ${GITHUB_REF_NAME#v}"
+          --notes "One zip per platform with the runtime and the SprongMotion-14M model inside. Install from Disk in
+          Blender 5.0 or newer. Licenses are in each zip's licenses/ folder."

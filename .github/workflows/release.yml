@@ -10,6 +10,7 @@ env:
   BLENDER_URL: https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
   RUNTIME_REPO: ${{ vars.RUNTIME_REPO || format('{0}/sprongmotion-runtime', github.repository_owner) }}
   RUNTIME_TAG: ${{ vars.RUNTIME_TAG || 'v1.0.0' }}
+  RUNTIME_REF: ${{ vars.RUNTIME_REF || 'main' }}
   MODEL_URL: ${{ vars.MODEL_URL || 'https://huggingface.co/SegerEnd/SprongMotion-14M/resolve/main' }}
   MODEL_SHA256: 68fbd311a0d7d75f60508b35254171583c85880e7e124140457b57ac84c5de9d
   GH_TOKEN: ${{ secrets.RUNTIME_TOKEN || github.token }}
@@ -26,9 +27,9 @@ jobs:
       - run: make lint unit PYTHON=python RUFF=ruff
       - name: Runtime and model
         run: |
-          mkdir -p ../deps/runtime ../deps/model
-          gh release download "$RUNTIME_TAG" -R "$RUNTIME_REPO" -p "*-linux-x86_64.tar.gz" -D ../deps
-          tar -xzf ../deps/*-linux-x86_64.tar.gz -C ../deps/runtime --strip-components 1
+          mkdir -p ../deps/model
+          git clone -q --depth 1 -b "$RUNTIME_REF" "https://github.com/$RUNTIME_REPO" ../deps/runtime
+          make -C ../deps/runtime lib
           for f in SprongMotion-14M-v1.0-Q8_0.gguf LICENSE README.md NOTICE; do
             curl -fsSL "$MODEL_URL/$f" -o "../deps/model/$f"
           done
@@ -40,7 +41,7 @@ jobs:
           mkdir -p ../blender && curl -fsSL "$BLENDER_URL" | tar -xJ -C ../blender --strip-components 1
       - run: make test PYTHON=python BLENDER=../blender/blender JOBS=4
         env:
-          SM_LIB: ${{ github.workspace }}/../deps/runtime/lib/libsprongmotion.so
+          SM_LIB: ${{ github.workspace }}/../deps/runtime/build/libsprongmotion.so
           SM_MODEL: ${{ github.workspace }}/../deps/model/SprongMotion-14M-v1.0-Q8_0.gguf
 
   release:

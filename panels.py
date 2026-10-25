@@ -153,10 +153,12 @@ def _draw_generate(layout, obj, r, s):
     row = layout.row(align=True)
     row.prop(s, "path", icon="CURVE_PATH")
     row.operator("sm.path_from_stroke", text="", icon="OUTLINER_OB_GREASEPENCIL")
+    layout.prop(r, "smooth", slider=True)
     row = layout.row(align=True)
     row.prop(r, "key_density", text="")
     if r.key_density == "UNBAKED":
         row.prop(r, "key_frames", text="")
+        layout.prop(r, "key_error", slider=True)
 
 
 def matched(obj):

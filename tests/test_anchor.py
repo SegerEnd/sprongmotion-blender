@@ -6,10 +6,17 @@ import random
 import bpy
 import numpy as np
 from bl_ext.smtest.sprongmotion import blocks, continue_keys, generate, model, retarget, rig, rig_data
-from test_generate import new_rig
+from test_generate import new_rig as _new_rig
 
 FPS, CUT, GAP = 24, 61, (49, 73)
 MOVING = [("a person walks forward", 12), ("a person jogs forward", 3), ("a person dances", 5)]
+
+
+def new_rig(*args, **kwargs):
+    """These tests measure the seam itself, so without Smooth."""
+    obj = _new_rig(*args, **kwargs)
+    obj.sprongmotion.smooth = 0.0
+    return obj
 
 
 def baked(text, seed, seconds=5.0):

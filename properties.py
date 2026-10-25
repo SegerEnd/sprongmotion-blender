@@ -188,6 +188,10 @@ class SMSettings(bpy.types.PropertyGroup):
     floor_clamp: BoolProperty(
         name="Floor", description="No part of the body goes below the floor", default=True, update=_on_setting_change
     )
+    smooth: FloatProperty(
+        name="Smooth", description="Take small jitter out of the motion before it is keyed", default=0.5, min=0.0,
+        max=1.0, subtype="FACTOR", update=_on_setting_change,
+    )  # fmt: skip
     key_density: EnumProperty(
         name="Keys",
         items=[
@@ -197,7 +201,8 @@ class SMSettings(bpy.types.PropertyGroup):
         update=_on_setting_change,
     )
     key_error: FloatProperty(
-        name="Key Error", description="How far unbaked keys may stray (degrees, cm)", default=0.5, min=0.05, max=10,
+        name="Simplify", description="How far keys may stray from the motion (degrees, cm): higher gives fewer keys",
+        default=0.5, min=0.05, max=10,
         update=_on_setting_change,
     )  # fmt: skip
     key_frames: EnumProperty(

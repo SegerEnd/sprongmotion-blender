@@ -54,8 +54,11 @@ def test_a_walk_returns_to_the_start_and_the_block_before_stays():
     off = keys_before(obj, b.start - 1)
     worst = max(np.abs(on[k] - v).max() for k, v in off.items())
     pelvis = [k for k in off if '"pelvis"' in k[0]]
-    print(f"> the block before: pelvis keys equal, legs within {worst:.4f} (IK holds a foot planted across the seam)")
-    assert all(np.array_equal(on[k], off[k]) for k in pelvis) and worst < 0.02, "the block before keeps its keys"
+    print(
+        f"> the block before: pelvis within {max(np.abs(on[k] - off[k]).max() for k in pelvis):.4f}, legs {worst:.4f}"
+    )
+    pelvis_worst = max(np.abs(on[k] - off[k]).max() for k in pelvis)
+    assert pelvis_worst < 0.005 and worst < 0.02, "the block before keeps its keys (Smooth reaches over the seam)"
     b.back_to_start = True
 
     b.locked, was = True, b.end - b.start  # the padlock keeps a length the way back does not fit: amber

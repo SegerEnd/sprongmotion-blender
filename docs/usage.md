@@ -49,7 +49,7 @@ block, named after the rig, as the generated keys always did. The lane and the s
 the rig plays now, so picking another action in the Action Editor shows its blocks, and a new empty action gives an
 empty lane. Blender's own Duplicate (or New with an action assigned) copies the blocks with the action: edits to the
 copy leave the original alone. An action played by two rigs has one set of blocks, and each rig keys them with its
-own bone map into its own slot. The bone map and rig preset, Frozen bones, Foot Lock, Hand Lock, Floor, Takes, Auto and the key
+own bone map into its own slot. The bone map and rig preset, Frozen bones, Foot Lock, Hand Lock, Floor, Smooth, Simplify, Takes, Auto and the key
 settings stay on the rig.
 
 Remove SprongMotion Data and Clear Motion work on the playing action: its blocks and generated keys go, other actions

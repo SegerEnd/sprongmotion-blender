@@ -120,7 +120,8 @@ def write_take_keys(obj, rot, joints, contacts, frames, times, borders, action=N
         keep = np.ones(len(frames), bool)
     frozen = rig_data.frozen(obj)
     on, planted, hands = _contacts(s, target, frozen, joints, contacts, times)
-    rot, root = retarget.resample(rot, times, quat=True), retarget.resample(joints[:, 0], times)
+    rot = retarget.resample(retarget.smooth(rot, s.smooth, m.fps, quat=True), times, quat=True)
+    root = retarget.resample(joints[:, 0], times)
     basis, loc = target.pose(rot, root, planted, first, hands, s.floor_clamp)
     if joins_keys:
         continue_keys.ease(target, sides, frames, basis, loc, blocks.fps())

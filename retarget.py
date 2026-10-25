@@ -34,6 +34,25 @@ def positions(g, root, offsets):
     return p
 
 
+def smooth(arr, amount, fps, quat=False):
+    """arr [F, ...] at fps filtered over time to take out jitter: amount 0 leaves it, 1 smooths over about 0.15 s."""
+    if amount <= 0 or len(arr) < 3:
+        return arr
+    sigma = 0.075 * fps * amount  # frames
+    radius = int(np.ceil(3 * sigma))
+    offsets = np.arange(-radius, radius + 1)
+    weights = np.exp(-0.5 * (offsets / sigma) ** 2)
+    weights /= weights.sum()
+    if quat:  # all onto one hemisphere first, so neighbours average the short way
+        sign = np.where((arr[1:] * arr[:-1]).sum(-1, keepdims=True) < 0, -1.0, 1.0)
+        arr = arr * np.concatenate([np.ones_like(sign[:1]), np.cumprod(sign, 0)])
+    padded = np.pad(arr, [(radius, radius)] + [(0, 0)] * (arr.ndim - 1), mode="edge")
+    out = sum(w * padded[i : i + len(arr)] for i, w in enumerate(weights))
+    if quat:
+        out /= np.linalg.norm(out, axis=-1, keepdims=True)
+    return out
+
+
 def resample(arr, times, quat=False):
     """arr sampled at fractional frames times, linearly (quat: normalised, the short way)."""
     t = np.clip(times, 0, len(arr) - 1)

@@ -129,3 +129,28 @@ def test_floor_keeps_a_somersault_above_the_floor():
     generate.run_now(obj)
     assert not model.error(), model.error()
     assert lowest(obj, b).min() > -0.005
+
+
+def heads(obj, b):
+    out = []
+    for f in range(b.start, b.end):
+        bpy.context.scene.frame_set(f)
+        out.append([tuple(obj.matrix_world @ pb.head) for pb in obj.pose.bones])
+    return np.array(out)
+
+
+def test_smooth_takes_out_jitter_and_stays_close():
+    assert bpy.ops.sm.add_rig() == {"FINISHED"}, model.error()
+    obj = bpy.context.active_object
+    obj.sprongmotion.key_density = "EXACT"
+    obj.sprongmotion.smooth = 0.0
+    b = blocks.add(obj, "a person dances happily", 3)
+    b.seed = 3
+    generate.run_now(obj)
+    raw = heads(obj, b)
+    obj.sprongmotion.smooth = 0.5
+    generate.run_now(obj)
+    smooth = heads(obj, b)
+    jerk = [np.linalg.norm(np.diff(p, 3, axis=0), axis=-1).mean() for p in (raw, smooth)]
+    assert jerk[1] < 0.7 * jerk[0], jerk
+    assert np.linalg.norm(smooth - raw, axis=-1).max() < 0.05

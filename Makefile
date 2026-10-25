@@ -4,7 +4,7 @@ RUFF ?= $(if $(wildcard .venv/bin/ruff),$(abspath .venv/bin/ruff),ruff)
 JOBS ?= 10
 RUNTIME ?= ../sprongmotion-runtime
 MODEL_DIR ?=
-RT = $(RUNTIME)/build/dist/sprongmotion-1.0.0
+RT = $(RUNTIME)/build/dist/sprongmotion-1.1.0
 LIBS ?= macos-arm64=$(RT)-macos-arm64/lib/libsprongmotion.dylib linux-x64=$(RT)-linux-x86_64/lib/libsprongmotion.so \
 	windows-x64=$(RT)-windows-x86_64/lib/libsprongmotion.dll
 SHELL := /bin/bash -o pipefail

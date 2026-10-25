@@ -9,7 +9,7 @@ on:
 env:
   BLENDER_URL: https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
   RUNTIME_REPO: ${{ vars.RUNTIME_REPO || format('{0}/sprongmotion-runtime', github.repository_owner) }}
-  RUNTIME_TAG: ${{ vars.RUNTIME_TAG || 'v1.0.0' }}
+  RUNTIME_TAG: ${{ vars.RUNTIME_TAG || 'v1.1.0' }}
   RUNTIME_REF: ${{ vars.RUNTIME_REF || 'main' }}
   MODEL_URL: ${{ vars.MODEL_URL || 'https://huggingface.co/SegerEnd/SprongMotion-14M/resolve/main' }}
   MODEL_SHA256: 68fbd311a0d7d75f60508b35254171583c85880e7e124140457b57ac84c5de9d

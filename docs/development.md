@@ -35,7 +35,7 @@ files at once, 10), `SM_THREADS` (model threads per Blender, 2 under make), `SM_
 
 | File | Does |
 |---|---|
-| `runtime.py` | ctypes binding of the runtime (`include/sm.h`) |
+| `runtime.py` | ctypes binding of the runtime (`include/sprongmotion.h`) |
 | `model.py` | Loading the runtime library and the model, the add-on preferences, unknown words |
 | `properties.py` | The data on each armature (bone map, settings) and on each action (its blocks, Loop, path), moving old files' blocks to the action |
 | `blocks.py` | The block list: add, split, resize, move, place freely, runs, stored codes |

@@ -1,125 +1,185 @@
-"""ctypes binding for the calls of libsprongmotion the add-on uses (include/sm.h)."""
+"""ctypes binding for the calls of libsprongmotion the add-on uses (sprongmotion.h)."""
 
 import contextlib
 import ctypes as C
 
 import numpy as np
 
-P_FOOT_LOCK, P_IN_PLACE, P_LOOP = 9, 10, 11
-I_FPS, I_FRAMES_PER_TOKEN, I_MAX_FRAMES, I_JOINTS, I_CODE_LAYERS, I_ENCODER = 1, 2, 3, 4, 9, 11
+NEEDS = (1, 1)  # the oldest runtime version with this API
 
-_P, _U32, _I32, _SIZE = C.c_void_p, C.c_uint32, C.c_int32, C.c_size_t
-_PU32, _PF = C.POINTER(C.c_uint32), C.POINTER(C.c_float)
-_SIGS = {
-    "sm_version": (_U32, []),
-    "sm_status_message": (C.c_char_p, [_I32]),
-    "sm_model_load_file": (_I32, [C.c_char_p, _P, C.POINTER(_P), C.c_char_p, _SIZE]),
-    "sm_model_free": (None, [_P]),
-    "sm_model_info": (_I32, [_P, _I32]),
-    "sm_model_id": (C.c_char_p, [_P]),
-    "sm_model_vocab": (C.c_char_p, [_P, _U32]),
-    "sm_skeleton_offsets": (_I32, [_P, C.POINTER(C.c_float), _U32]),
-    "sm_ctx_create": (_I32, [_P, C.POINTER(_P)]),
-    "sm_ctx_free": (None, [_P]),
-    "sm_ctx_last_error": (C.c_char_p, [_P]),
-    "sm_request_create": (_I32, [_P, C.POINTER(_P)]),
-    "sm_request_free": (None, [_P]),
-    "sm_request_set_int": (_I32, [_P, _I32, _I32]),
-    "sm_request_set_path": (_I32, [_P, _PF, _U32]),
-    "sm_text_create": (_I32, [_P, C.POINTER(_P)]),
-    "sm_text_free": (None, [_P]),
-    "sm_ctx_encode_text": (_I32, [_P, C.c_char_p, _I32, _P]),
-    "sm_text_vector": (_I32, [_P, C.POINTER(_PF), _PU32]),
-    "sm_text_unknown_words": (_I32, [_P, C.c_char_p, _SIZE, C.POINTER(_SIZE), _PU32]),
-    "sm_motion_create": (_I32, [_P, C.POINTER(_P)]),
-    "sm_motion_free": (None, [_P]),
-    "sm_ctx_generate_blocks": (
-        _I32,
-        [
-            _P,
-            _P,
-            _U32,
-            C.POINTER(C.c_char_p),
-            _P,
-            C.POINTER(C.c_double),
-            C.POINTER(C.c_int32),
-            C.POINTER(C.POINTER(C.c_int16)),
-            _PU32,
-            _P,
-        ],
-    ),
-    "sm_ctx_encode_motion": (_I32, [_P, _P, _PF, _U32, _P]),
-    "sm_motion_rotations": (C.POINTER(C.c_float), [_P, _PU32]),
-    "sm_motion_joints": (C.POINTER(C.c_float), [_P, _PU32]),
-    "sm_motion_codes": (C.POINTER(C.c_int16), [_P, _PU32]),
-    "sm_motion_contacts": (C.POINTER(C.c_uint8), [_P, _PU32]),
-    "sm_motion_speed": (_PF, [_P, _PU32]),
-    "sm_motion_root": (_PF, [_P, _PU32]),
-    "sm_motion_write_bvh": (_I32, [_P, C.c_double, C.c_char_p, _SIZE, C.POINTER(_SIZE)]),
+_FLOATS, _CODES = C.POINTER(C.c_float), C.POINTER(C.c_int16)
+
+
+class PathPoint(C.Structure):
+    _fields_ = [("time", C.c_float), ("x", C.c_float), ("z", C.c_float), ("heading", C.c_float)]
+
+
+class ModelInfo(C.Structure):
+    _fields_ = [
+        ("id", C.c_char_p),
+        ("fps", C.c_int),
+        ("frames_per_token", C.c_int),
+        ("max_seconds", C.c_float),
+        ("code_layers", C.c_int),
+        ("feature_size", C.c_int),
+        ("text_vector_size", C.c_int),
+        ("joint_count", C.c_int),
+        ("joint_names", C.POINTER(C.c_char_p)),
+        ("joint_parents", C.POINTER(C.c_int)),
+        ("rest_offsets", _FLOATS),
+        ("has_generator", C.c_bool),
+        ("has_encoder", C.c_bool),
+        ("follows_path", C.c_bool),
+        ("internal", C.c_void_p),
+    ]
+
+
+class Options(C.Structure):
+    _fields_ = [
+        ("seconds", C.c_float),
+        ("seed", C.c_int),
+        ("steps", C.c_int),
+        ("residual_layers", C.c_int),
+        ("text_guidance", C.c_float),
+        ("residual_guidance", C.c_float),
+        ("temperature", C.c_float),
+        ("top_k", C.c_int),
+        ("foot_lock", C.c_bool),
+        ("in_place", C.c_bool),
+        ("loop", C.c_bool),
+        ("path_warp", C.c_bool),
+        ("path", C.POINTER(PathPoint)),
+        ("path_count", C.c_int),
+        ("previous", C.c_void_p),
+        ("pinned_codes", _CODES),
+        ("pinned_token_count", C.c_int),
+        ("text", C.c_void_p),
+        ("progress", C.c_void_p),
+        ("user", C.c_void_p),
+    ]
+
+
+class Block(C.Structure):
+    _fields_ = [
+        ("prompt", C.c_char_p),
+        ("text", C.c_void_p),
+        ("seconds", C.c_float),
+        ("seed", C.c_int),
+        ("kept_codes", _CODES),
+    ]
+
+
+class Text(C.Structure):
+    _fields_ = [
+        ("vector", _FLOATS),
+        ("vector_size", C.c_int),
+        ("unknown_word_count", C.c_int),
+        ("unknown_words", C.c_char_p),
+        ("internal", C.c_void_p),
+    ]
+
+
+class MotionData(C.Structure):
+    _fields_ = [
+        ("frame_count", C.c_int),
+        ("fps", C.c_int),
+        ("seed", C.c_int),
+        ("joints", _FLOATS),
+        ("rotations", _FLOATS),
+        ("offsets", _FLOATS),
+        ("root", _FLOATS),
+        ("speed", _FLOATS),
+        ("contacts", C.POINTER(C.c_uint8)),
+        ("features", _FLOATS),
+        ("codes", _CODES),
+        ("confidence", _FLOATS),
+        ("token_count", C.c_int),
+        ("path_error", C.c_float),
+        ("block_start_frames", C.POINTER(C.c_int)),
+        ("block_count", C.c_int),
+        ("internal", C.c_void_p),
+    ]
+
+
+_SIGNATURES = {
+    "sm_get_version": (C.c_char_p, []),
+    "sm_get_error": (C.c_char_p, []),
+    "sm_set_thread_count": (None, [C.c_int]),
+    "sm_set_memory_functions": (None, [C.c_void_p, C.c_void_p]),
+    "sm_load_model": (ModelInfo, [C.c_char_p]),
+    "sm_is_model_valid": (C.c_bool, [ModelInfo]),
+    "sm_unload_model": (None, [ModelInfo]),
+    "sm_get_model_word": (C.c_char_p, [ModelInfo, C.c_int]),
+    "sm_default_options": (Options, [ModelInfo]),
+    "sm_generate_timeline": (MotionData, [ModelInfo, C.POINTER(Block), C.c_int, Options]),
+    "sm_encode_motion": (MotionData, [ModelInfo, _FLOATS, C.c_int, Options]),
+    "sm_is_motion_valid": (C.c_bool, [MotionData]),
+    "sm_unload_motion": (None, [MotionData]),
+    "sm_export_motion_bvh_text": (C.c_void_p, [MotionData, C.c_float]),
+    "sm_encode_text": (Text, [ModelInfo, C.c_char_p]),
+    "sm_is_text_valid": (C.c_bool, [Text]),
+    "sm_unload_text": (None, [Text]),
+    "sm_free": (None, [C.c_void_p]),
 }
-
-
-class Hooks(C.Structure):
-    """sm_hooks: the thread count (0 = every core) and optionally an allocator; the rest stays the library's."""
-
-    _fields_ = [("struct_size", _U32), ("alloc", _P), ("free", _P), ("log", _P), ("parallel_for", _P),
-                ("n_threads", _U32), ("user", _P)]  # fmt: skip
-
-    def __init__(self, n_threads=0, alloc=None, free=None):
-        super().__init__(C.sizeof(Hooks), alloc, free, None, None, n_threads, None)
 
 
 class Error(RuntimeError):
     pass
 
 
+def version_tuple(text):
+    """ "1.1.0" -> (1, 1, 0)."""
+    return tuple(int(part) for part in text.split("."))
+
+
 class Lib:
     def __init__(self, path):
         self.path, self.c = path, C.CDLL(path)
-        for name, (res, args) in _SIGS.items():
-            fn = getattr(self.c, name)
-            fn.restype, fn.argtypes = res, args
-        if self.c.sm_version() >> 16 != 1:
-            raise Error(f"{path}: runtime major version {self.c.sm_version() >> 16}, the add-on needs 1")
+        if not hasattr(self.c, "sm_get_version"):
+            raise Error(f"{path} is an older runtime, the add-on needs {NEEDS[0]}.{NEEDS[1]} or newer")
+        for name, (result, args) in _SIGNATURES.items():
+            function = getattr(self.c, name)
+            function.restype, function.argtypes = result, args
+        version = version_tuple(self.c.sm_get_version().decode())
+        if version[0] != NEEDS[0] or version[:2] < NEEDS:
+            raise Error(f"{path} is runtime {'.'.join(map(str, version))}, the add-on needs {NEEDS[0]}.{NEEDS[1]}")
 
-    def check(self, status, msg=b""):
-        if status < 0:
-            raise Error((msg or self.c.sm_status_message(status)).decode())
-        return status
+    def error(self):
+        return self.c.sm_get_error().decode()
 
 
 class Model:
-    def __init__(self, lib, path, hooks=None):
+    def __init__(self, lib, path, threads=0):
         self.lib, c = lib, lib.c
-        self.h, err = _P(), C.create_string_buffer(256)
-        lib.check(c.sm_model_load_file(path.encode(), hooks, C.byref(self.h), err, 256), err.value)
-        self.id = c.sm_model_id(self.h).decode()
-        self.fps = c.sm_model_info(self.h, I_FPS)
-        self.fpt, self.layers = c.sm_model_info(self.h, I_FRAMES_PER_TOKEN), c.sm_model_info(self.h, I_CODE_LAYERS)
-        self.max_seconds = c.sm_model_info(self.h, I_MAX_FRAMES) / self.fps
-        self.encoder = c.sm_model_info(self.h, I_ENCODER) == 1
-        n = c.sm_model_info(self.h, I_JOINTS)
-        off = (C.c_float * (n * 3))()
-        lib.check(c.sm_skeleton_offsets(self.h, off, n * 3))
-        self.offsets = np.array(off, np.float32).reshape(n, 3)
-        self.ctx, self.req, self.text = _P(), _P(), _P()
-        lib.check(c.sm_ctx_create(self.h, C.byref(self.ctx)))
-        lib.check(c.sm_request_create(self.h, C.byref(self.req)))
-        lib.check(c.sm_text_create(self.h, C.byref(self.text)))
+        c.sm_set_thread_count(threads)
+        self.info = c.sm_load_model(path.encode())
+        if not c.sm_is_model_valid(self.info):
+            raise Error(lib.error())
+        info = self.info
+        self.id = info.id.decode()
+        self.fps, self.fpt, self.layers = info.fps, info.frames_per_token, info.code_layers
+        self.max_seconds = info.max_seconds
+        self.encoder = info.has_encoder
+        self.offsets = np.ctypeslib.as_array(info.rest_offsets, (info.joint_count, 3)).copy()
 
     def free(self):
-        c = self.lib.c
-        c.sm_text_free(self.text)
-        c.sm_request_free(self.req)
-        c.sm_ctx_free(self.ctx)
-        c.sm_model_free(self.h)
+        self.lib.c.sm_unload_model(self.info)
 
     def _options(self, foot_lock, in_place, loop, path):
-        c = self.lib.c
-        for p, v in ((P_FOOT_LOCK, foot_lock), (P_IN_PLACE, in_place), (P_LOOP, loop)):
-            c.sm_request_set_int(self.req, p, int(v))
-        pts = np.zeros((0, 4), np.float32) if path is None else np.ascontiguousarray(path, np.float32)
-        self.lib.check(c.sm_request_set_path(self.req, pts.ctypes.data_as(_PF), len(pts)), self.error())
+        """Options with the add-on's switches; the path array must stay alive while they are used."""
+        options = self.lib.c.sm_default_options(self.info)
+        options.foot_lock, options.in_place, options.loop = foot_lock, in_place, loop
+        points = None
+        if path is not None and len(path):
+            points = np.ascontiguousarray(path, np.float32)
+            options.path = points.ctypes.data_as(C.POINTER(PathPoint))
+            options.path_count = len(points)
+        return options, points
+
+    def _checked(self, motion):
+        if not self.lib.c.sm_is_motion_valid(motion):
+            raise Error(self.lib.error())
+        return Motion(self, motion)
 
     @contextlib.contextmanager
     def blocks(self, texts, seconds, seeds, keep, foot_lock=True, in_place=False, loop=False, path=None):
@@ -127,103 +187,106 @@ class Model:
 
         keep[i]: a block's codes (int16 [tokens, layers]) to keep, None to make it. path: [n, 4] (t, x, z, heading).
         """
-        n, c, out = len(texts), self.lib.c, Motion(self)
-        keep = [None if k is None else np.ascontiguousarray(k, np.int16) for k in keep]
-        ptrs = (C.POINTER(C.c_int16) * n)(*[k.ctypes.data_as(C.POINTER(C.c_int16)) if k is not None else None
-                                            for k in keep])  # fmt: skip
-        first = (C.c_uint32 * (n + 1))()
+        kept = [None if k is None else np.ascontiguousarray(k, np.int16) for k in keep]
+        prompts = [t.encode() for t in texts]
+        items = (Block * len(texts))()
+        for item, prompt, length, seed, codes in zip(items, prompts, seconds, seeds, kept, strict=True):
+            item.prompt, item.seconds, item.seed = prompt, length, seed
+            item.kept_codes = codes.ctypes.data_as(_CODES) if codes is not None else None
+        options, _points = self._options(foot_lock, in_place, loop, path)
+        motion = self._checked(self.lib.c.sm_generate_timeline(self.info, items, len(texts), options))
         try:
-            self._options(foot_lock, in_place, loop, path)
-            status = c.sm_ctx_generate_blocks(
-                self.ctx, self.req, n, (C.c_char_p * n)(*[t.encode() for t in texts]), None,
-                (C.c_double * n)(*seconds), (C.c_int32 * n)(*seeds), ptrs, first, out.h,
-            )  # fmt: skip
-            self.lib.check(status, self.error())
-            yield out, list(first)
+            data = motion.data
+            yield motion, list(np.ctypeslib.as_array(data.block_start_frames, (data.block_count + 1,)))
         finally:
-            out.free()
+            motion.free()
 
     def encode(self, joints):
         """Motion to codes: joints [frames, 22, 3] (metres, Y up, model fps) to int16 [(frames - 1) // 2, layers]."""
-        out, j = Motion(self), np.ascontiguousarray(joints, np.float32)
+        joints = np.ascontiguousarray(joints, np.float32)
+        options = self.lib.c.sm_default_options(self.info)
+        motion = self._checked(
+            self.lib.c.sm_encode_motion(self.info, joints.ctypes.data_as(_FLOATS), len(joints), options)
+        )
         try:
-            status = self.lib.c.sm_ctx_encode_motion(self.ctx, None, j.ctypes.data_as(_PF), len(j), out.h)
-            self.lib.check(status, self.error())
-            return out.codes()
+            return motion.codes()
         finally:
-            out.free()
+            motion.free()
 
     def vocab(self):
         """The whole words the model knows, sorted."""
-        words, get = [], self.lib.c.sm_model_vocab
-        while (w := get(self.h, len(words))) is not None:
-            words.append(w.decode())
+        words = []
+        while (word := self.lib.c.sm_get_model_word(self.info, len(words))) is not None:
+            words.append(word.decode())
         return words
 
-    def _encode(self, text):
-        self.lib.check(self.lib.c.sm_ctx_encode_text(self.ctx, text.encode(), -1, self.text), self.error())
+    @contextlib.contextmanager
+    def _text(self, prompt):
+        text = self.lib.c.sm_encode_text(self.info, prompt.encode())
+        if not self.lib.c.sm_is_text_valid(text):
+            raise Error(self.lib.error())
+        try:
+            yield text
+        finally:
+            self.lib.c.sm_unload_text(text)
 
-    def vector(self, text):
+    def vector(self, prompt):
         """The text encoder's pooled vector."""
-        v, n = _PF(), C.c_uint32()
-        self._encode(text)
-        self.lib.check(self.lib.c.sm_text_vector(self.text, C.byref(v), C.byref(n)))
-        return np.ctypeslib.as_array(v, (n.value,)).copy()
+        with self._text(prompt) as text:
+            return np.ctypeslib.as_array(text.vector, (text.vector_size,)).copy()
 
-    def unknown_words(self, text):
-        c, need, n = self.lib.c, _SIZE(), C.c_uint32()
-        self._encode(text)
-        self.lib.check(c.sm_text_unknown_words(self.text, None, 0, C.byref(need), C.byref(n)))
-        buf = C.create_string_buffer(need.value)
-        self.lib.check(c.sm_text_unknown_words(self.text, buf, need.value, C.byref(need), C.byref(n)))
-        return buf.value.decode().split()
+    def unknown_words(self, prompt):
+        with self._text(prompt) as text:
+            return text.unknown_words.decode().split()
 
     def error(self):
-        return self.lib.c.sm_ctx_last_error(self.ctx)
+        return self.lib.error()
 
 
 class Motion:
-    def __init__(self, model):
-        self.model, self.h = model, _P()
-        model.lib.check(model.lib.c.sm_motion_create(model.h, C.byref(self.h)))
+    def __init__(self, model, data):
+        self.model, self.data = model, data
 
     def free(self):
-        self.model.lib.c.sm_motion_free(self.h)
+        self.model.lib.c.sm_unload_motion(self.data)
 
-    def _array(self, name, width):
-        n = C.c_uint32()
-        ptr = getattr(self.model.lib.c, name)(self.h, C.byref(n))
-        return np.ctypeslib.as_array(ptr, (n.value,)).reshape(-1, *width).copy() if n.value else np.zeros((0, *width))
+    def _array(self, pointer, count, width):
+        if not count:
+            return np.zeros((0, *width))
+        return np.ctypeslib.as_array(pointer, (count * int(np.prod(width)),)).reshape(-1, *width).copy()
 
     def rotations(self):
         """[frames, joints, 4] x y z w, each relative to its parent."""
-        return self._array("sm_motion_rotations", (len(self.model.offsets), 4))
+        return self._array(self.data.rotations, self.data.frame_count, (len(self.model.offsets), 4))
 
     def joints(self):
         """[frames, joints, 3]: positions as output (in place when asked), the path the rotations go with."""
-        return self._array("sm_motion_joints", (len(self.model.offsets), 3))
+        return self._array(self.data.joints, self.data.frame_count, (len(self.model.offsets), 3))
 
     def pelvis(self):
         return self.joints()[:, 0]
 
     def contacts(self):
         """[frames, 4] on the ground: l_ankle, l_foot, r_ankle, r_foot."""
-        return self._array("sm_motion_contacts", (4,)).astype(bool)
+        return self._array(self.data.contacts, self.data.frame_count, (4,)).astype(bool)
 
     def speed(self):
         """[frames] m/s: the model's own root speed, before a path warp."""
-        return self._array("sm_motion_speed", ())
+        return self._array(self.data.speed, self.data.frame_count, ())
 
     def root(self):
         """[frames, 3]: the root's full travel, also with In Place."""
-        return self._array("sm_motion_root", (3,))
+        return self._array(self.data.root, self.data.frame_count, (3,))
 
     def codes(self):
-        return self._array("sm_motion_codes", (self.model.layers,)).astype(np.int16)
+        return self._array(self.data.codes, self.data.token_count, (self.model.layers,)).astype(np.int16)
 
     def bvh(self, scale=100.0):
-        c, need = self.model.lib.c, _SIZE()
-        self.model.lib.check(c.sm_motion_write_bvh(self.h, scale, None, 0, C.byref(need)))
-        buf = C.create_string_buffer(need.value)
-        self.model.lib.check(c.sm_motion_write_bvh(self.h, scale, buf, need.value, C.byref(need)))
-        return buf.value.decode()
+        c = self.model.lib.c
+        pointer = c.sm_export_motion_bvh_text(self.data, scale)
+        if not pointer:
+            raise Error(self.model.lib.error())
+        try:
+            return C.string_at(pointer).decode()
+        finally:
+            c.sm_free(pointer)

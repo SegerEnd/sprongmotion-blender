@@ -1,6 +1,5 @@
 """The runtime library and model the add-on generates with, and the word help built from the model."""
 
-import ctypes as C
 import os
 import platform
 
@@ -64,7 +63,7 @@ def _load_files(lib_path, model_path):
     except (OSError, AttributeError, runtime.Error) as e:
         return f"Cannot load the library {lib_path}: {e}"
     try:
-        _state.model = runtime.Model(_state.lib, model_path, C.byref(runtime.Hooks(THREADS)))
+        _state.model = runtime.Model(_state.lib, model_path, THREADS)
     except runtime.Error as e:
         return f"Cannot load the model {model_path}: {e}"
     sentences = typing_help.lines("sentences.txt")

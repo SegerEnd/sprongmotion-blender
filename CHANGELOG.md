@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Needs the SprongMotion runtime 1.1 (its new API). An older runtime library is refused with a message.
 - Hand Lock: hands on the floor in the motion (push-ups, crawling) stay put and on the floor, also on rigs whose arms
   are longer or shorter than the model's.
 - Floor: no part of the body goes below the floor. Wrists and ankles by IK, toes by turning the foot, the rest by

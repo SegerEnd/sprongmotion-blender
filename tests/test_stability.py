@@ -69,7 +69,7 @@ def rss_mb():
 
 
 class Counter:
-    """sm_hooks with an allocator that counts live blocks."""
+    """An allocator that counts live blocks."""
 
     def __init__(self):
         libc = C.CDLL(None)
@@ -77,23 +77,28 @@ class Counter:
         libc.free.argtypes = [C.c_void_p]
         self.live = 0
 
-        def alloc(_user, size, align):
+        def alloc(size, align):
             p = C.c_void_p()
             if libc.posix_memalign(C.byref(p), max(align, C.sizeof(C.c_void_p)), size):
                 return None
             self.live += 1
             return p.value
 
-        def free(_user, ptr):
+        def free(ptr):
             if ptr:
                 self.live -= 1
                 libc.free(ptr)
 
-        self.alloc = C.CFUNCTYPE(C.c_void_p, C.c_void_p, C.c_size_t, C.c_size_t)(alloc)
-        self.free = C.CFUNCTYPE(None, C.c_void_p, C.c_void_p)(free)
+        self.alloc = C.CFUNCTYPE(C.c_void_p, C.c_size_t, C.c_size_t)(alloc)
+        self.free = C.CFUNCTYPE(None, C.c_void_p)(free)
 
-        threads = sys.modules[PKG + ".model"].THREADS
-        self.hooks = runtime.Hooks(threads, C.cast(self.alloc, C.c_void_p).value, C.cast(self.free, C.c_void_p).value)
+    def load(self, lib, path):
+        """A model whose memory comes from this allocator (the library takes it at load)."""
+        lib.c.sm_set_memory_functions(C.cast(self.alloc, C.c_void_p), C.cast(self.free, C.c_void_p))
+        try:
+            return runtime.Model(lib, path, sys.modules[PKG + ".model"].THREADS)
+        finally:
+            lib.c.sm_set_memory_functions(None, None)
 
 
 def cycle(m, seed):
@@ -108,7 +113,7 @@ def cycle(m, seed):
 def test_300_cycles_leak_nothing():
     count = Counter()
     loader = sys.modules[PKG + ".model"]
-    m = runtime.Model(loader._state.lib, loader._state.paths[1], C.byref(count.hooks))
+    m = count.load(loader._state.lib, loader._state.paths[1])
     try:
         cycle(m, 0)
         live, rss = count.live, rss_mb()

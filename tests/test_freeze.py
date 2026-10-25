@@ -2,16 +2,13 @@ from types import SimpleNamespace
 
 import bpy
 from bl_ext.smtest.sprongmotion import blocks, generate, panels, retarget, rig_data
+from test_generate import new_rig
 
 ARM = ("l_shoulder", "l_elbow")
 
 
 def setup(take=True):
-    bpy.context.scene.render.fps = 24
-    bpy.context.scene.frame_current = 1
-    bpy.ops.sm.add_rig()
-    obj = bpy.context.active_object
-    obj.sprongmotion.auto = False
+    obj = new_rig()
     if take:
         blocks.add(obj, "a person walks forward and waves", 3).seed = 2
         generate.run_now(obj)

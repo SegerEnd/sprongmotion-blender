@@ -2,8 +2,8 @@
 
 import numpy as np
 import pytest
+from sprongmotion import quat, rig
 from sprongmotion import retarget as r
-from sprongmotion import rig
 
 OFFSETS = np.array([
     [0, 0, 0], [0.1, -0.08, 0], [-0.1, -0.08, 0], [0, 0.1, -0.02], [0, -0.4, 0.01], [0, -0.4, 0.01], [0, 0.13, 0],
@@ -35,12 +35,12 @@ def target(scale=1.0, drop=()):
     t.map = {j: n for j, n in enumerate(rig.JOINTS) if n not in drop}
     t.joint_of = {b: j for j, b in t.map.items() if rig.CHILD[j] >= 0}
     t.order = r._topological_order(bones, {})
-    t.rest = {b.name: r.arc(np.array([0, 1.0, 0]), b.tail_local - b.head_local) for b in bones}
+    t.rest = {b.name: quat.arc(np.array([0, 1.0, 0]), b.tail_local - b.head_local) for b in bones}
     t.axes = t._model_axes()
     t.q = _quat(t.axes)
     t.src = rig.rest_joints(OFFSETS)
     t.ends = {j: t._aim_joint(j) for j in t.joint_of.values()}
-    t.align = {b: r.arc(*t._rest_directions(b, j)) for b, j in t.joint_of.items()}
+    t.align = {b: quat.arc(*t._rest_directions(b, j)) for b, j in t.joint_of.items()}
     t.ratio = t._height() / t.src[0, 1]
     return t
 

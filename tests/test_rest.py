@@ -2,6 +2,7 @@ import bpy
 import numpy as np
 from bl_ext.smtest.sprongmotion import blocks, generate, model, retarget, rig_data, takes
 from mathutils import Vector
+from test_generate import new_rig
 
 
 def prefs():
@@ -10,11 +11,7 @@ def prefs():
 
 def setup(gap=0, after="HOLD"):
     prefs().after_block, prefs().ease_seconds = after, 0.4
-    bpy.context.scene.render.fps = 24
-    bpy.context.scene.frame_current = 1
-    bpy.ops.sm.add_rig()
-    obj = bpy.context.active_object
-    obj.sprongmotion.auto = False
+    obj = new_rig()
     blocks.add(obj, "a person walks forward", 2).seed = 2
     if gap:
         b = blocks.add(obj, "a person waves", 2)
@@ -136,3 +133,45 @@ def test_preference_change_makes_no_take():
         generate._Job.take, generate.undo_push = take, push
     assert not made and pushes == ["SprongMotion: After a Block"]
     assert [blocks.codes(b, m.id).tolist() for b in blocks.settings(obj).blocks] == codes
+
+
+def last_keys(obj):
+    """Each keyed bone's last key frame (its earliest over the curves)."""
+    out = {}
+    for fc in retarget.channelbag(obj).fcurves:
+        bone = fc.data_path.split('"')[1]
+        out[bone] = min(out.get(bone, float("inf")), fc.keyframe_points[-1].co[0])
+    return out
+
+
+def test_a_newly_added_last_block_is_keyed_over_its_whole_range():
+    obj = new_rig(True)
+    obj.sprongmotion.key_density = "UNBAKED"
+    for k, text in enumerate(("a person walks forward", "a person waves")):
+        blocks.add(obj, text, 2).seed = k + 1
+    generate.run_now(obj)
+    last = blocks.add(obj, "a person does jumping jacks", 3)
+    generate.run_now(obj)
+    try:
+        for after in ("HOLD", "REST"):
+            for in_place in (False, True):
+                prefs().after_block = after
+                for b in blocks.settings(obj).blocks:
+                    b.in_place = in_place
+                takes.apply(obj, push=False)
+                short = {n: f for n, f in last_keys(obj).items() if f < last.end}
+                assert not short, f"{after}, in place {in_place}: keys stop before {last.end}: {short}"
+    finally:
+        prefs().after_block = "HOLD"
+
+
+def test_a_half_written_bone_map_is_filled_again():
+    """A map an interrupted fill left with 2 of 22 entries keys only those bones: the next apply fills it again."""
+    obj = new_rig(True)
+    blocks.add(obj, "a person does jumping jacks", 2)
+    generate.run_now(obj)
+    keyed = set(last_keys(obj))
+    while len(obj.sprongmotion.bones) > 2:
+        obj.sprongmotion.bones.remove(len(obj.sprongmotion.bones) - 1)
+    takes.apply(obj, push=False)
+    assert len(obj.sprongmotion.bones) == 22 and set(last_keys(obj)) == keyed

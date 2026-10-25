@@ -3,12 +3,17 @@ import numpy as np
 from bl_ext.smtest.sprongmotion import blocks, generate, model, retarget, takes, timeline_motion
 
 
-def setup(auto=False):
-    bpy.context.scene.render.fps = 24
-    bpy.context.scene.frame_current = 1
+def new_rig(auto=False, fps=24):
+    """The add-on's own rig, the scene at fps and frame 1."""
+    bpy.context.scene.render.fps, bpy.context.scene.frame_current = fps, 1
     assert bpy.ops.sm.add_rig() == {"FINISHED"}, model.error()
     obj = bpy.context.active_object
     obj.sprongmotion.auto = auto
+    return obj
+
+
+def setup(auto=False):
+    obj = new_rig(auto)
     for text, seconds in (("a person walks forward", 2), ("a person jumps", 1), ("a person sits down", 1.5)):
         blocks.add(obj, text, seconds)
     return obj

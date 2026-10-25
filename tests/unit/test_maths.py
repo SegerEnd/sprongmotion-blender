@@ -1,13 +1,14 @@
 import numpy as np
+from sprongmotion import quat
 from sprongmotion import retarget as r
 
 
 def test_quaternion_basics():
-    q = r.arc(np.array([1.0, 0, 0]), np.array([0, 1.0, 0]))
-    assert np.allclose(r.qrot(q, np.array([1.0, 0, 0])), [0, 1, 0])
-    assert np.allclose(r.qmul(q, r.qinv(q)), [0, 0, 0, 1])
+    q = quat.arc(np.array([1.0, 0, 0]), np.array([0, 1.0, 0]))
+    assert np.allclose(quat.qrot(q, np.array([1.0, 0, 0])), [0, 1, 0])
+    assert np.allclose(quat.qmul(q, quat.qinv(q)), [0, 0, 0, 1])
     flips = np.array([[0, 0, 0, 1.0], [0, 0, 0, -1], [0, 0, 0.1, -0.99]])
-    assert (r.continuous(flips)[:, 3] > 0).all()
+    assert (quat.continuous(flips)[:, 3] > 0).all()
 
 
 def test_resample_and_positions():
@@ -32,8 +33,8 @@ def test_two_bone_reaches_without_overextending():
     front = np.array([0, -1.0, 0])
     for target in ([0.1, 0.05, 0.1], [0, 0, -0.5]):
         thigh, shin = r.two_bone(h, k, a, np.array([target]), front)
-        knee = h + r.qrot(thigh, k - h)
-        ankle = knee + r.qrot(shin, a - k)
+        knee = h + quat.qrot(thigh, k - h)
+        ankle = knee + quat.qrot(shin, a - k)
         leg = np.linalg.norm(k - h) + np.linalg.norm(a - k)
         if np.linalg.norm(np.array(target) - h) < 0.99 * leg:
             assert np.allclose(ankle, target, atol=1e-6)

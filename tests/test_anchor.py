@@ -6,16 +6,14 @@ import random
 import bpy
 import numpy as np
 from bl_ext.smtest.sprongmotion import blocks, continue_keys, generate, model, retarget, rig, rig_data
+from test_generate import new_rig
 
 FPS, CUT, GAP = 24, 61, (49, 73)
 MOVING = [("a person walks forward", 12), ("a person jogs forward", 3), ("a person dances", 5)]
 
 
 def baked(text, seed, seconds=5.0):
-    bpy.context.scene.render.fps, bpy.context.scene.frame_current = FPS, 1
-    bpy.ops.sm.add_rig()
-    obj = bpy.context.active_object
-    obj.sprongmotion.auto = False
+    obj = new_rig(fps=FPS)
     blocks.add(obj, text, seconds).seed = seed
     generate.run_now(obj)
     assert bpy.ops.sm.bake(keys="0.5") == {"FINISHED"}
@@ -202,10 +200,7 @@ def test_a_block_added_in_a_gap_fills_it_and_frozen_bones_keep_their_keys():
 
 
 def test_regenerate_range():
-    bpy.context.scene.render.fps, bpy.context.scene.frame_current = FPS, 1
-    bpy.ops.sm.add_rig()
-    obj = bpy.context.active_object
-    obj.sprongmotion.auto = False
+    obj = new_rig(True, fps=FPS)
     for text in ("a person walks forward", "a person waves"):
         blocks.add(obj, text, 3).seed = 4
     generate.run_now(obj)

@@ -7,14 +7,11 @@ import numpy as np
 import undos
 from bl_ext.smtest.sprongmotion import blocks, generate, model, takes
 from test_copy import counting
+from test_generate import new_rig
 
 
 def setup(auto=False):
-    bpy.context.scene.render.fps = 24
-    bpy.context.scene.frame_current = 1
-    assert bpy.ops.sm.add_rig() == {"FINISHED"}, model.error()
-    obj = bpy.context.active_object
-    obj.sprongmotion.auto = auto
+    obj = new_rig(auto)
     for k, text in enumerate(("a person walks forward", "a person walks forward", "a person walks forward quickly")):
         blocks.add(obj, text, 2).seed = k + 1  # random seeds: a walk may barely move
     obj.sprongmotion.key_density = "EXACT"

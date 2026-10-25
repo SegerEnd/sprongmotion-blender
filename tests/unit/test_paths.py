@@ -1,6 +1,5 @@
 import numpy as np
-from sprongmotion import paths
-from sprongmotion import retarget as r
+from sprongmotion import paths, quat
 
 
 def test_chain_takes_the_first_spline_and_sees_a_closed_one():
@@ -23,20 +22,20 @@ def test_to_model_inverts_how_the_pelvis_is_placed():
     rng = np.random.default_rng(1)
     axes = np.array([[1.0, 0, 0], [0, 0, -1], [0, 1, 0]])  # model left, up, forward in a Z-up armature
     ratio, src0, head = 1.3, np.array([0, 0.9, 0]), np.array([0, 0.1, 1.2])
-    yaw = r.arc(np.array([0, 1.0, 0]), np.array([1.0, 1, 0]))
+    yaw = quat.arc(np.array([0, 1.0, 0]), np.array([1.0, 1, 0]))
     start = (np.array([0.4, -0.2, 0]), yaw)
     world_from_arm = np.eye(4)
-    world_from_arm[:3, :3] = 2 * r_mat(r.arc(np.array([1.0, 0, 0]), np.array([0, 1.0, 0])))
+    world_from_arm[:3, :3] = 2 * r_mat(quat.arc(np.array([1.0, 0, 0]), np.array([0, 1.0, 0])))
     world_from_arm[:3, 3] = [3, -1, 0.5]
     root = np.c_[rng.normal(size=5), np.full(5, 0.9), rng.normal(size=5)]
-    move = r.qrot(yaw, ratio * (root - src0) @ axes.T) + start[0]
+    move = quat.qrot(yaw, ratio * (root - src0) @ axes.T) + start[0]
     world = (np.c_[head + move, np.ones(5)] @ world_from_arm.T)[:, :3]
     xz = paths.to_model(world, np.linalg.inv(world_from_arm), head, start, axes, ratio, src0)
     assert np.allclose(xz, root[:, [0, 2]])
 
 
 def r_mat(q):
-    return np.stack([r.qrot(q, e) for e in np.eye(3)], 1)
+    return np.stack([quat.qrot(q, e) for e in np.eye(3)], 1)
 
 
 def test_fit_shares_the_path_by_gait_and_keeps_idle_and_fixed_blocks():

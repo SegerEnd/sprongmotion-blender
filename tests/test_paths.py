@@ -5,16 +5,14 @@ import bpy
 import numpy as np
 from bl_ext.smtest.sprongmotion import blocks, generate, model, paths, timeline_motion
 from test_cleanup import PKG, add_on_props
+from test_generate import new_rig
 
 WALK = "a person walks forward"
 _push = generate.undo_push
 
 
 def rig(*texts):
-    bpy.context.scene.render.fps = 24
-    bpy.context.scene.frame_current = 1
-    assert bpy.ops.sm.add_rig() == {"FINISHED"}, model.error()
-    obj = bpy.context.active_object
+    obj = new_rig()
     s = obj.sprongmotion
     s.auto, s.key_density = False, "EXACT"
     for text, seconds in texts:

@@ -5,7 +5,7 @@ import tempfile
 
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, data, engine, retarget
+from bl_ext.smtest.sprongmotion import blocks, data, engine, model, retarget
 from test_cleanup import add_on_props
 from test_generate import curve
 
@@ -14,7 +14,7 @@ DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 def fresh_rig(name="SprongMotion Rig"):
     bpy.context.scene.render.fps, bpy.context.scene.frame_current = 24, 1
-    assert bpy.ops.sm.add_rig() == {"FINISHED"}, engine.error()
+    assert bpy.ops.sm.add_rig() == {"FINISHED"}, model.error()
     obj = bpy.context.active_object
     obj.name = name
     return obj
@@ -31,7 +31,7 @@ def test_a_motion_on_a_fresh_rig_makes_its_action_and_plays():
     assert bpy.ops.sm.block_add(text="a person walks forward") == {"FINISHED"}
     action = obj.animation_data.action
     assert action.name == obj.name + "Action" and texts(obj) == ["a person walks forward"]
-    assert len(curve(obj).keyframe_points) > 2 and not engine.error(), "made at once and keyed"
+    assert len(curve(obj).keyframe_points) > 2 and not model.error(), "made at once and keyed"
     assert "blocks" not in obj.bl_system_properties_get()["sprongmotion"], "the blocks are the action's"
 
 
@@ -58,7 +58,7 @@ def test_a_duplicated_action_copies_its_blocks_independently():
     copy = blocks.settings(obj).blocks[0]
     assert copy.text == "a person walks forward" and copy["codes"][:] == original.sprongmotion.blocks[0]["codes"][:]
     copy.text = "a person jumps"
-    assert not engine.error() and not copy.dirty and original.sprongmotion.blocks[0].text == "a person walks forward"
+    assert not model.error() and not copy.dirty and original.sprongmotion.blocks[0].text == "a person walks forward"
     assert copy["codes"][:] != original.sprongmotion.blocks[0]["codes"][:], "the copy's take is its own"
 
 
@@ -69,7 +69,7 @@ def test_an_action_on_two_rigs_is_keyed_on_each_with_its_own_slot():
     two.animation_data_create().action = one.animation_data.action
     bpy.context.view_layer.objects.active = one
     blocks.settings(one).blocks[0].text = "a person waves"
-    assert texts(two) == ["a person waves"] and not engine.error()
+    assert texts(two) == ["a person waves"] and not model.error()
     for obj in (one, two):
         knee = retarget.channelbag(obj).fcurves.find('pose.bones["l_knee"].rotation_quaternion', index=1)
         assert knee is not None and len(knee.keyframe_points) > 2, obj.name
@@ -116,7 +116,7 @@ def test_an_old_file_moves_the_rig_blocks_to_its_action_bit_for_bit():
         bpy.ops.wm.open_mainfile(filepath=path)
     obj = bpy.data.objects["Walker"]
     engine.run_now(obj)
-    assert not engine.error() and not any(b.dirty for b in blocks.settings(obj).blocks), "the takes decode as is"
+    assert not model.error() and not any(b.dirty for b in blocks.settings(obj).blocks), "the takes decode as is"
 
 
 def test_remove_takes_the_playing_action_then_the_whole_file():

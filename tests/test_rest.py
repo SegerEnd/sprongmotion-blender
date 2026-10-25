@@ -1,6 +1,6 @@
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, data, engine, retarget
+from bl_ext.smtest.sprongmotion import blocks, data, engine, model, retarget, takes
 from mathutils import Vector
 
 
@@ -116,7 +116,7 @@ def test_frozen_bones_and_own_keys_stay():
     knee = next(fc for fc in curves(obj) if fc.data_path == 'pose.bones["l_knee"].rotation_quaternion')
     k = knee.keyframe_points.insert(end + 4 * n, 0.9)
     k.type = "KEYFRAME"
-    engine.apply(obj, push=False)
+    takes.apply(obj, push=False)
     assert (end + 4 * n, 0.9) in [(k.co.x, round(k.co.y, 6)) for k in knee.keyframe_points], "the own key stays"
     assert max(k.co.x for fc in curves(obj) if "l_knee" not in fc.data_path for k in fc.keyframe_points) <= end, (
         "no ease where own keys follow"
@@ -125,7 +125,7 @@ def test_frozen_bones_and_own_keys_stay():
 
 def test_preference_change_makes_no_take():
     obj = setup()
-    m = engine.model()
+    m = model.load()
     codes = [blocks.codes(b, m.id).tolist() for b in blocks.settings(obj).blocks]
     made, pushes, take, push = [], [], engine._Job.take, engine.undo_push
     engine._Job.take = lambda *a: made.append(a)

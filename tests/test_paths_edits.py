@@ -6,14 +6,14 @@ import tempfile
 
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, paths
+from bl_ext.smtest.sprongmotion import blocks, engine, model, paths, takes, timeline
 from test_paths import WALK, lengths, pelvis_xy, rig, s_curve, unwatch, watch
 from undos import NAME, edits, one_undo
 
 
 def mark(i):
     b = blocks.settings(bpy.data.objects[NAME]).blocks[i]
-    return b.remake, b.locked, engine.needs_take(b, engine.model().id)
+    return b.remake, b.locked, timeline.needs_take(b, model.load().id)
 
 
 def test_a_hand_resize_locks_survives_undo_and_reload_and_unlocking_gives_it_back_to_the_fit():
@@ -66,7 +66,7 @@ def test_with_a_path_one_cmd_z_undoes_an_edit_and_a_block_action_follows_its_par
     for label, edit in reversed(edits()):  # the text first: a resize with a path locks the block
         one_undo(edit, label + " with a path")
     obj = bpy.data.objects[NAME]
-    walk = engine.block_actions(obj, ["walk", "wave"])[0]
+    walk = takes.block_actions(obj, ["walk", "wave"])[0]
     ad = obj.animation_data
     ad.action, ad.action_slot = walk, walk.slots[0]
     xy = pelvis_xy(obj, range(1, int(walk.frame_range[1]) + 1))

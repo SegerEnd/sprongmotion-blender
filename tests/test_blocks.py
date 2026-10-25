@@ -3,7 +3,7 @@ import time
 
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine
+from bl_ext.smtest.sprongmotion import blocks, engine, model, takes, timeline
 from test_generate import all_codes, curve, setup
 
 
@@ -29,7 +29,7 @@ def test_split_keeps_the_motion():
 
 def test_one_block_per_timer_tick_same_takes():
     obj = setup()
-    m, calls, run = engine.model(), [], engine.model().blocks
+    m, calls, run = model.load(), [], model.load().blocks
 
     def counted(texts, seconds, seeds, keep, *a):
         calls.append(sum(k is None for k in keep))
@@ -57,23 +57,23 @@ def test_edit_to_keys_time():
         blocks.add(obj, text, 2)
     engine.run_now(obj)
     obj.sprongmotion.auto = True
-    spent, apply = [], engine.apply
+    spent, apply = [], takes.apply
 
     def timed(*a, **k):
         t0 = time.perf_counter()
         apply(*a, **k)
         spent.append(time.perf_counter() - t0)
 
-    engine.apply, total = timed, []
+    takes.apply, total = timed, []
     try:
         for k in range(3):
             t0 = time.perf_counter()
             blocks.settings(obj).blocks[2].text = "a person sits down" + " slowly" * (k % 2)
             total.append(time.perf_counter() - t0)
     finally:
-        engine.apply = apply
+        takes.apply = apply
     edit, keys = 1000 * min(total), 1000 * min(spent)
-    threads = engine.THREADS or "all"
+    threads = model.THREADS or "all"
     print(f"> edit to keys {edit:.0f} ms: model {edit - keys:.0f} ms, keys {keys:.0f} ms ({threads} model threads)")
     assert not os.environ.get("SM_SLOW") or keys < 60, f"keys took {keys:.0f} ms"
 
@@ -84,10 +84,8 @@ def test_a_take_belongs_to_its_text():
     blocks.add(obj, "a person walks", 2)
     engine.run_now(obj)
     b = blocks.settings(obj).blocks[0]
-    before = blocks.codes(b, engine.model().id).copy()
+    before = blocks.codes(b, model.load().id).copy()
     b["text"] = "a person stands still"  # the stored text alone: no update, so no dirty mark
-    assert not b.dirty and engine.needs_take(b, engine.model().id)
+    assert not b.dirty and timeline.needs_take(b, model.load().id)
     engine.run_now(obj)
-    assert not engine.needs_take(b, engine.model().id) and not np.array_equal(
-        before, blocks.codes(b, engine.model().id)
-    )
+    assert not timeline.needs_take(b, model.load().id) and not np.array_equal(before, blocks.codes(b, model.load().id))

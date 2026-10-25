@@ -4,7 +4,7 @@ import bpy
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper
 
-from . import anchor, blocks, data, engine, keys, paths, retarget, rig, sm
+from . import anchor, blocks, data, engine, keys, model, paths, retarget, rig, sm, takes, timeline
 
 
 def editable(context):
@@ -165,7 +165,7 @@ class SM_OT_block_regenerate_range(_BlockOp, bpy.types.Operator):
                 return {"CANCELLED"}
             f0, f1 = scene.frame_preview_start, scene.frame_preview_end
         engine.cancel()
-        why = engine.remake_range(obj, i, min(f0, f1), max(f0, f1))
+        why = timeline.remake_range(obj, i, min(f0, f1), max(f0, f1))
         if why:
             self.report({"WARNING"}, why)
             return {"CANCELLED"}
@@ -189,8 +189,8 @@ class SM_OT_fill_gap(bpy.types.Operator):
         span, why = self.lane_gap(obj) if self.after >= 0 else self.keys_gap(obj, context.scene.frame_current)
         if span is not None and span[1] - span[0] < round(blocks.MIN_SECONDS * blocks.fps()):
             why = f"The gap is shorter than {blocks.MIN_SECONDS:g} s"
-        if why or engine.model() is None:
-            self.report({"WARNING"}, why or engine.error())
+        if why or model.load() is None:
+            self.report({"WARNING"}, why or model.error())
             return {"CANCELLED"}
         if self.after < 0:
             anchor.clear(obj, *span)
@@ -199,7 +199,7 @@ class SM_OT_fill_gap(bpy.types.Operator):
         return {"FINISHED"}
 
     def keys_gap(self, obj, frame):
-        why = anchor.why_not(obj, engine.model())
+        why = anchor.why_not(obj, model.load())
         span = anchor.selected_gap(obj, frame)
         if blocks.has_blocks(bpy.context):
             why = "This rig has blocks already: bake or remove them first, or fill a gap between blocks in the lane"
@@ -240,8 +240,8 @@ class SM_OT_generate(bpy.types.Operator):
     poll = _has_blocks
 
     def execute(self, context):
-        if engine.model() is None:
-            self.report({"ERROR"}, engine.error())
+        if model.load() is None:
+            self.report({"ERROR"}, model.error())
             return {"CANCELLED"}
         engine.edited(context.active_object, force=True)
         return {"FINISHED"}
@@ -289,7 +289,7 @@ class SM_OT_bake(bpy.types.Operator):
 
     def invoke(self, context, _event):
         self.names.clear()
-        for name in engine.action_names(blocks.settings(context.active_object)):
+        for name in takes.action_names(blocks.settings(context.active_object)):
             self.names.add().name = name
         return self.execute(context)
 
@@ -305,15 +305,15 @@ class SM_OT_bake(bpy.types.Operator):
 
     def execute(self, context):
         obj, s = context.active_object, context.active_object.sprongmotion
-        if engine.model() is None:
-            self.report({"ERROR"}, engine.error())
+        if model.load() is None:
+            self.report({"ERROR"}, model.error())
             return {"CANCELLED"}
         with engine.hold():
             s.key_density = "EXACT" if self.keys == "EXACT" else "UNBAKED"
             s.key_error = s.key_error if self.keys == "EXACT" else float(self.keys)
             engine.run_now(obj)
             if self.actions == "PER_BLOCK":
-                engine.block_actions(obj, [n.name for n in self.names], self.asset)
+                takes.block_actions(obj, [n.name for n in self.names], self.asset)
             if obj.animation_data and obj.animation_data.action:
                 for fc in retarget.channelbag(obj).fcurves:
                     keys.retype(fc.keyframe_points, keys.GENERATED, keys.KEYFRAME)
@@ -334,13 +334,13 @@ class SM_OT_export_bvh(bpy.types.Operator, ExportHelper):
     def execute(self, context):
         try:
             obj = context.active_object
-            with engine.timeline(obj, in_place=blocks.settings(obj).in_place) as (motion, _):
+            with timeline.whole(obj, in_place=blocks.settings(obj).in_place) as (motion, _):
                 text = motion.bvh() if motion else None
         except sm.Error as e:
             self.report({"ERROR"}, str(e))
             return {"CANCELLED"}
         if text is None:
-            self.report({"ERROR"}, engine.error() or "No block has a take from this model yet")
+            self.report({"ERROR"}, model.error() or "No block has a take from this model yet")
             return {"CANCELLED"}
         with open(self.filepath, "w", encoding="utf-8") as f:
             f.write(text)
@@ -355,9 +355,9 @@ class SM_OT_add_rig(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
-        m = engine.model()
+        m = model.load()
         if m is None:
-            self.report({"ERROR"}, engine.error())
+            self.report({"ERROR"}, model.error())
             return {"CANCELLED"}
         if context.mode != "OBJECT":
             bpy.ops.object.mode_set(mode="OBJECT")
@@ -405,7 +405,7 @@ class SM_OT_freeze(bpy.types.Operator):
         if why:
             self.report({"ERROR"}, why)
             return {"CANCELLED"}
-        if blocks.has_blocks(context) and engine.model():
+        if blocks.has_blocks(context) and model.load():
             engine.run_now(obj)
         return {"FINISHED"}
 

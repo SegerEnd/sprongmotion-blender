@@ -33,9 +33,7 @@ def _paint(bone, on):
 
 
 def freeze(obj, names, on=True):
-    """Frozen bones (the armature's "Frozen" bone collection) get no generated keys. Freezing turns their generated
-    keys into the user's own (KEYFRAME), so they keep what they show; unfreezing lets the next take key them again.
-    None when done, else why not."""
+    """Freeze or unfreeze bones: frozen bones get no generated keys and keep theirs. None when done, else why not."""
     arm = obj.data
     if arm.library is not None:
         return f"{arm.name} is linked: make it a library override too (Library Override > Make > Selected & Content)"
@@ -87,9 +85,7 @@ def _take_keys(obj, cb, bake):
 
 
 def clear_action(action, bake=True):
-    """The action's blocks go, and the generated keys in each of its slots. bake: they become ordinary keys, else
-    they go and the bones they animated on a rig playing the slot (none of the user's own keys left) go back to rest.
-    An action left empty goes, with animation data left empty."""
+    """Remove the action's blocks and generated keys (bake: keep them as own keys), and the action if left empty."""
     players = blocks.players(action)
     for slot in action.slots:
         cb = anim_utils.action_get_channelbag_for_slot(action, slot)
@@ -106,8 +102,7 @@ def clear_action(action, bake=True):
 
 
 def remove_data(obj, bake=True):
-    """Take the add-on out of the action obj plays (clear_action). The rig's settings and Frozen collection go too,
-    unless another action keeps blocks for it (one with a slot of the rig's name)."""
+    """Take the add-on out of the action obj plays, and the rig's settings unless another action has blocks for it."""
     ad = obj.animation_data
     if ad and ad.action and blocks.local(ad.action):
         clear_action(ad.action, bake)

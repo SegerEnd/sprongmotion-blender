@@ -3,7 +3,7 @@ import tempfile
 
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine
+from bl_ext.smtest.sprongmotion import blocks, engine, takes, timeline
 from test_generate import all_codes, codes, curve, setup
 
 
@@ -47,9 +47,9 @@ def test_foot_lock_and_in_place_come_from_the_runtime():
 
 def ankle_track(obj, side=0):
     """Scene frames, the world ankle head per frame and the runtime's ankle contact per frame."""
-    with engine.timeline(obj) as (motion, segs):
+    with timeline.whole(obj) as (motion, segs):
         contacts = motion.contacts()
-    frames, times = engine.timing(segs)
+    frames, times = takes.timing(segs)
     planted = contacts[np.round(times).astype(int).clip(0, len(contacts) - 1), 2 * side]
     pos = []
     for f in frames:

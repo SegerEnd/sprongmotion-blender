@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 import bpy
-from bl_ext.smtest.sprongmotion import blocks, lane, ops
+from bl_ext.smtest.sprongmotion import block_text, blocks, lane, ops
 
 
 def key(type_, unicode="", ctrl=False):
@@ -11,16 +11,16 @@ def key(type_, unicode="", ctrl=False):
 def test_typing_in_place():
     text, caret = "", 0
     for ch in "a person runs":
-        text, caret = lane.type_key(text, caret, key(ch.upper(), ch))
+        text, caret = block_text.type_key(text, caret, key(ch.upper(), ch))
     assert (text, caret) == ("a person runs", 13)
-    text, caret = lane.type_key(text, caret, key("HOME"))
-    text, caret = lane.type_key(text, caret, key("DEL"))
+    text, caret = block_text.type_key(text, caret, key("HOME"))
+    text, caret = block_text.type_key(text, caret, key("DEL"))
     assert (text, caret) == (" person runs", 0)
-    text, caret = lane.type_key(text, caret, key("V", ctrl=True), "slowly\nmore")
+    text, caret = block_text.type_key(text, caret, key("V", ctrl=True), "slowly\nmore")
     assert (text, caret) == ("slowly person runs", 6)
-    assert lane.type_key(text, caret, key("LEFT_ARROW")) == (text, 5)
-    assert lane.type_key(text, caret, key("BACK_SPACE")) == ("slowl person runs", 5)
-    assert lane.type_key(text, caret, key("A", "a", ctrl=True)) == (text, caret)
+    assert block_text.type_key(text, caret, key("LEFT_ARROW")) == (text, 5)
+    assert block_text.type_key(text, caret, key("BACK_SPACE")) == ("slowl person runs", 5)
+    assert block_text.type_key(text, caret, key("A", "a", ctrl=True)) == (text, caret)
 
 
 class _Region:

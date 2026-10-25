@@ -1,7 +1,7 @@
 import addon_utils
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import engine, retarget, rig
+from bl_ext.smtest.sprongmotion import model, retarget, rig
 from test_retarget import fk, take
 
 DEF = {"l_hip": "DEF-thigh.L", "l_knee": "DEF-shin.L", "l_ankle": "DEF-foot.L", "r_hip": "DEF-thigh.R",
@@ -24,7 +24,7 @@ def test_rigify_fk_round_trip():
     rot, root = take()
     rig.fill_map(obj)
     rig.prepare(obj)
-    target = retarget.Target(obj, engine.model().offsets)
+    target = retarget.Target(obj, model.load().offsets)
     basis, loc = target.pose(rot, root)
     retarget.write(obj, np.arange(1, len(rot) + 1), basis, loc, target.map[0])
     want, pb, worst, least = fk(rot, root) @ target.axes.T, obj.pose.bones, {}, {}

@@ -10,7 +10,7 @@ from bpy.props import (
     StringProperty,
 )
 
-from . import blocks, engine, paths, rig
+from . import blocks, engine, model, paths, return_to_start, rig
 
 
 def _rig(owner):
@@ -18,7 +18,7 @@ def _rig(owner):
 
 
 def _edited(block, _context):
-    engine.unknown_words(block.text)
+    model.unknown_words(block.text)
     if obj := _rig(block):
         blocks.mark_dirty(obj, block.uid)
 
@@ -42,8 +42,7 @@ TIMELINE = ("blocks", "active", "next_uid", "loop", "path", "path_key", "path_le
 
 
 def upgrade(obj):
-    """Files that keep blocks, Loop and path on the rig: they move bit for bit to the action it plays (made if none, a
-    copy of its own if another rig's blocks are on it already). A rig-wide In Place puts all its blocks in place."""
+    """Move blocks, Loop and path kept on the rig (older files) bit for bit to the action it plays."""
     old = (obj.bl_system_properties_get() or {}).get("sprongmotion")
     if old is None:
         return
@@ -71,7 +70,7 @@ def _preset(settings, _context):
 
 def _locked(block, _context):
     obj = _rig(block)
-    fitted = obj and (paths.path(obj) is not None or paths.walks_back(block.id_data.sprongmotion, block))
+    fitted = obj and (paths.path(obj) is not None or return_to_start.walks_back(block.id_data.sprongmotion, block))
     if fitted and not block.locked:
         engine.edited(obj)  # back to the fit
 

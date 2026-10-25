@@ -3,7 +3,7 @@ import tempfile
 
 import addon_utils
 import bpy
-from bl_ext.smtest.sprongmotion import blocks, data, engine, retarget, rig
+from bl_ext.smtest.sprongmotion import blocks, data, engine, model, retarget, rig
 
 PKG = "bl_ext.smtest.sprongmotion"
 UI = {"window_managers", "workspaces", "screens", "all_ids"}
@@ -56,7 +56,7 @@ def test_bake_and_remove_leave_plain_animation():
     assert not obj.data.collections.get(data.FROZEN) and {b.color.palette for b in obj.data.bones} == {"DEFAULT"}
     kinds = {k.type for fc in retarget.channelbag(obj).fcurves for k in fc.keyframe_points}
     assert kinds == {"KEYFRAME"}, kinds
-    reference = rig.build_own_rig(bpy.context, engine.model().offsets, name="Reference")
+    reference = rig.build_own_rig(bpy.context, model.load().offsets, name="Reference")
     assert list(reference.keys()) == list(obj.keys()) and [c.name for c in reference.data.collections] == [
         c.name for c in obj.data.collections
     ]

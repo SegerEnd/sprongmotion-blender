@@ -5,8 +5,8 @@ import ctypes as C
 
 import numpy as np
 
-P_FOOT_LOCK, P_IN_PLACE, P_LOOP, P_PATH_WARP = 9, 10, 11, 13
-I_FPS, I_FRAMES_PER_TOKEN, I_MAX_FRAMES, I_JOINTS, I_CODE_LAYERS, I_ENCODER, I_PATH_INPUT = 1, 2, 3, 4, 9, 11, 12
+P_FOOT_LOCK, P_IN_PLACE, P_LOOP = 9, 10, 11
+I_FPS, I_FRAMES_PER_TOKEN, I_MAX_FRAMES, I_JOINTS, I_CODE_LAYERS, I_ENCODER = 1, 2, 3, 4, 9, 11
 
 _P, _U32, _I32, _SIZE = C.c_void_p, C.c_uint32, C.c_int32, C.c_size_t
 _PU32, _PF = C.POINTER(C.c_uint32), C.POINTER(C.c_float)
@@ -55,7 +55,6 @@ _SIGS = {
     "sm_motion_contacts": (C.POINTER(C.c_uint8), [_P, _PU32]),
     "sm_motion_speed": (_PF, [_P, _PU32]),
     "sm_motion_root": (_PF, [_P, _PU32]),
-    "sm_motion_path_error": (C.c_float, [_P]),
     "sm_motion_write_bvh": (_I32, [_P, C.c_double, C.c_char_p, _SIZE, C.POINTER(_SIZE)]),
 }
 
@@ -98,7 +97,6 @@ class Model:
         self.fps = c.sm_model_info(self.h, I_FPS)
         self.fpt, self.layers = c.sm_model_info(self.h, I_FRAMES_PER_TOKEN), c.sm_model_info(self.h, I_CODE_LAYERS)
         self.max_seconds = c.sm_model_info(self.h, I_MAX_FRAMES) / self.fps
-        self.path_input = c.sm_model_info(self.h, I_PATH_INPUT) == 1
         self.encoder = c.sm_model_info(self.h, I_ENCODER) == 1
         n = c.sm_model_info(self.h, I_JOINTS)
         off = (C.c_float * (n * 3))()
@@ -125,9 +123,10 @@ class Model:
 
     @contextlib.contextmanager
     def blocks(self, texts, seconds, seeds, keep, foot_lock=True, in_place=False, loop=False, path=None):
-        """A timeline of prompt blocks in one motion (sm_ctx_generate_blocks): keep[i] = a block's codes (int16
-        [tokens, layers]) to keep as they are, None to make it; path: [n, 4] (t, x, z, heading) points the root
-        follows, None for none. Yields (motion, first frame of each block, end)."""
+        """Generate prompt blocks in one motion. Yields (motion, first frame of each block, end).
+
+        keep[i]: a block's codes (int16 [tokens, layers]) to keep, None to make it. path: [n, 4] (t, x, z, heading).
+        """
         n, c, out = len(texts), self.lib.c, Motion(self)
         keep = [None if k is None else np.ascontiguousarray(k, np.int16) for k in keep]
         ptrs = (C.POINTER(C.c_int16) * n)(*[k.ctypes.data_as(C.POINTER(C.c_int16)) if k is not None else None
@@ -145,8 +144,7 @@ class Model:
             out.free()
 
     def encode(self, joints):
-        """Existing motion to codes: joints [frames, 22, 3] (metres, Y up, model fps) -> int16 [(frames - 1) // 2,
-        layers]."""
+        """Motion to codes: joints [frames, 22, 3] (metres, Y up, model fps) to int16 [(frames - 1) // 2, layers]."""
         out, j = Motion(self), np.ascontiguousarray(joints, np.float32)
         try:
             status = self.lib.c.sm_ctx_encode_motion(self.ctx, None, j.ctypes.data_as(_PF), len(j), out.h)
@@ -219,9 +217,6 @@ class Motion:
     def root(self):
         """[frames, 3]: the root's full travel, also with In Place."""
         return self._array("sm_motion_root", (3,))
-
-    def path_error(self):
-        return self.model.lib.c.sm_motion_path_error(self.h)
 
     def codes(self):
         return self._array("sm_motion_codes", (self.model.layers,)).astype(np.int16)

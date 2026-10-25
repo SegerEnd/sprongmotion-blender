@@ -3,7 +3,7 @@ import os
 import tempfile
 
 import bpy
-from bl_ext.smtest.sprongmotion import blocks, data, engine, retarget
+from bl_ext.smtest.sprongmotion import blocks, data, engine, model, retarget
 from test_rigs import build
 
 
@@ -27,7 +27,7 @@ def test_keys_go_onto_a_library_override():
     obj.sprongmotion.auto = False
     blocks.add(obj, "a person waves", 2)
     engine.run_now(obj)
-    assert not engine.error(), engine.error()
+    assert not model.error(), model.error()
     fc = retarget.channelbag(obj).fcurves.find('pose.bones["arm_up.L"].rotation_quaternion', index=1)
     assert fc is not None and len(fc.keyframe_points) > 2 and obj.animation_data.action.library is None
 
@@ -37,7 +37,7 @@ def test_a_linked_armature_without_override_gets_a_clear_message():
     with contextlib.suppress(AttributeError, TypeError):
         obj.sprongmotion.auto = False
     engine.run_now(obj)
-    assert "library override" in engine.error()
+    assert "library override" in model.error()
 
 
 def test_freezing_on_a_library_override():

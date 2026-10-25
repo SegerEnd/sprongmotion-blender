@@ -1,6 +1,6 @@
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, retarget
+from bl_ext.smtest.sprongmotion import blocks, engine, model, retarget
 from test_generate import all_codes, codes, setup
 from undos import one_undo
 
@@ -39,7 +39,7 @@ def test_the_take_is_the_block_made_alone():
     b = blocks.settings(obj).blocks[2]
     b.fresh = True
     engine.run_now(obj)
-    m = engine.model()
+    m = model.load()
     with m.blocks([b.text], [b.tokens * m.fpt / m.fps], [b.seed], [None]) as (alone, _):
         assert np.array_equal(alone.codes(), codes(b))
     first = blocks.settings(obj).blocks[0]
@@ -71,7 +71,7 @@ def test_toggling_makes_one_take_in_one_undo_step():
     obj = setup()
     engine.run_now(obj)
     obj.sprongmotion.auto = True
-    m, made, run = engine.model(), [], engine.model().blocks
+    m, made, run = model.load(), [], model.load().blocks
 
     def counted(texts, seconds, seeds, keep, *a):
         made.append(sum(k is None for k in keep))

@@ -31,9 +31,9 @@ def enable():
         raise RuntimeError("the add-on did not enable: its traceback is above")
     prefs = bpy.context.preferences.addons["bl_ext.smtest.sprongmotion"].preferences
     prefs.library_path, prefs.model_path = LIB, MODEL
-    engine = sys.modules["bl_ext.smtest.sprongmotion.engine"]
-    engine.THREADS = int(os.environ.get("SM_THREADS", "0"))  # make runs the test files side by side
-    engine.unload()
+    model = sys.modules["bl_ext.smtest.sprongmotion.model"]
+    model.THREADS = int(os.environ.get("SM_THREADS", "0"))  # make runs the test files side by side
+    model.unload()
 
 
 def report(head):

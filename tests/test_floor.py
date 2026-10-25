@@ -1,6 +1,6 @@
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine
+from bl_ext.smtest.sprongmotion import blocks, engine, model
 
 
 def lowest(obj, b):
@@ -12,7 +12,7 @@ def lowest(obj, b):
 
 
 def test_floor_keeps_a_somersault_above_the_floor():
-    assert bpy.ops.sm.add_rig() == {"FINISHED"}, engine.error()
+    assert bpy.ops.sm.add_rig() == {"FINISHED"}, model.error()
     obj = bpy.context.active_object
     obj.sprongmotion.key_density = "EXACT"
     b = blocks.add(obj, "does a somersault", 3)
@@ -21,5 +21,5 @@ def test_floor_keeps_a_somersault_above_the_floor():
     assert lowest(obj, b).min() < -0.05, "the test needs a take that goes below the floor"
     obj.sprongmotion.floor_clamp = True
     engine.run_now(obj)
-    assert not engine.error(), engine.error()
+    assert not model.error(), model.error()
     assert lowest(obj, b).min() > -0.005

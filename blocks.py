@@ -1,6 +1,6 @@
-"""Prompt blocks: text blocks placed freely on the timeline, in order and never overlapping, kept on the action the rig
-plays (action.sprongmotion.blocks), so switching the action switches the blocks. Blocks that touch form a run, made as
-one motion; a gap starts the next run afresh."""
+"""Prompt blocks: text blocks on the timeline, in order and never overlapping, kept on the action the rig plays.
+Blocks that touch form a run, made as one motion. A gap starts the next run afresh.
+"""
 
 import json
 import math
@@ -9,7 +9,7 @@ import random
 import bpy
 import numpy as np
 
-from . import anchor, engine, paths, retarget
+from . import anchor, engine, model, paths, retarget, timeline
 
 MIN_SECONDS, DEFAULT_SECONDS, MAX_SECONDS = 0.5, 3.0, 10.0
 TOUCH = 2  # frames: blocks this close still touch
@@ -31,9 +31,7 @@ def stored(idb):
 
 
 def settings(obj, create=False):
-    """The timeline of the action obj plays: its blocks, Loop and path. None without one. create: a rig without an
-    action gets one named after it (as a take makes it), and a linked or overridden action without blocks a local
-    copy."""
+    """The timeline of the action obj plays, None without one. create: make an action or a local copy."""
     if obj is None or obj.type != "ARMATURE":
         return None
     ad = obj.animation_data
@@ -89,11 +87,21 @@ def fps(scene=None):
 def limits():
     """Block length in frames: at least MIN_SECONDS, at most the model's maximum less the seams to both neighbours."""
     f = fps()
-    return round(MIN_SECONDS * f), int(engine.max_seconds() * f)
+    return round(MIN_SECONDS * f), int(model.max_seconds() * f)
 
 
 def find(s, uid):
     return next((i for i, b in enumerate(s.blocks) if b.uid == uid), -1)
+
+
+def has_motion(b):
+    """The block is enabled and has text."""
+    return bool(b.enabled and b.text.strip())
+
+
+def timeline_blocks(s):
+    """The blocks that make motion, in order."""
+    return [b for b in s.blocks if has_motion(b)]
 
 
 def runs(s):
@@ -177,8 +185,7 @@ def add(obj, text, seconds=DEFAULT_SECONDS):
 
 
 def snap(obj, index, frame=None):
-    """A block added (or dropped at frame) into a gap between the rig's own keys fills it when the gap fits a block's
-    length: the run's first block from the keys before to the keys after, a later one up to the keys after."""
+    """A block added (or dropped at frame) in a gap between the rig's own keys fills it when the gap fits a block."""
     s, (lo, hi) = settings(obj), limits()
     b = s.blocks[index]
     g = anchor.gap(obj, b.start if frame is None else frame)
@@ -191,8 +198,7 @@ def snap(obj, index, frame=None):
 
 
 def fill(obj, lo, hi, text):
-    """Blocks with text exactly over frames lo..hi (several if the gap is longer than a block can be). The blocks
-    around keep their takes: the one after now goes on from them."""
+    """Blocks with text exactly over frames lo..hi, several if the gap is longer than one block can be."""
     s = settings(obj, create=True)
     n = max(1, math.ceil((hi - lo) / limits()[1]))
     with engine.hold():
@@ -204,7 +210,7 @@ def fill(obj, lo, hi, text):
             s.blocks.move(len(s.blocks) - 1, sum(x.start < b.start for x in s.blocks[:-1]))
         s.active, after = find(s, made[0]), find(s, made[-1]) + 1
         if after < len(s.blocks) and "made_fresh" in s.blocks[after]:
-            s.blocks[after]["made_fresh"] = s.blocks[after].uid in engine.fresh_uids(s)
+            s.blocks[after]["made_fresh"] = s.blocks[after].uid in timeline.fresh_uids(s)
         mark_dirty(obj, *made)
 
 
@@ -222,8 +228,7 @@ def remove(obj, index):
 
 
 def resize(obj, index, start=None, end=None, follow=False):
-    """Neighbours it would overlap move out of the way. follow: its run ripples, the blocks touching it move with the
-    edge (those before it with its start, those after it with its end), so the gaps around the run keep their size."""
+    """Resize a block, pushing neighbours it would overlap. follow: the blocks touching it move with the edge."""
     s = settings(obj)
     b, (lo, hi), after = s.blocks[index], limits(), chain(s, index)
     k = index
@@ -280,9 +285,8 @@ def split(obj, index, frame):
 
 
 def _cut(b, n, at):
-    """n gets b's takes from the fraction at on; False if b has no take from the loaded model or a half would be
-    too short for one."""
-    m = engine.loaded()
+    """Give n b's takes from the fraction at on. False without a take or when a half would be too short."""
+    m = model.loaded()
     t = takes(b, m.id) if m else None
     k = round(at * b.tokens)
     if t is None or min(k, b.tokens - k) < math.ceil(MIN_SECONDS * m.fps / m.fpt):
@@ -326,14 +330,12 @@ def _from_clip(clip):
 
 
 def paste(obj, clip, after):
-    """A block from to_clip's string, inserted after block `after` (-1: at the playhead); the blocks touching on from
-    `after` shift by its length, and any it then overlaps. Its take comes along when it is from the loaded model, so
-    it only decodes. None if clip holds no block."""
+    """Insert a block from to_clip's string after block `after` (-1: at the playhead). None if clip holds no block."""
     d = _from_clip(clip)
     if d is None:
         return None
     text, seconds, seed, color, locked, fresh, in_place, back, t = d
-    s, m, (lo, hi) = settings(obj, create=True), engine.model(), limits()
+    s, m, (lo, hi) = settings(obj, create=True), model.load(), limits()
     later = chain(s, after) if after >= 0 else range(0)
     with engine.hold():
         _new(s)
@@ -372,7 +374,7 @@ def store(block, codes, model_id):
     """codes: int16 [variants, tokens, layers], kept in the .blend with the model id: reopening or undo only decodes."""
     block["codes"] = codes.reshape(-1).astype(np.int32).tolist()
     block["model"], block["made_text"] = model_id, block.text.strip()
-    block["made_fresh"] = block.uid in engine.fresh_uids(block.id_data.sprongmotion)
+    block["made_fresh"] = block.uid in timeline.fresh_uids(block.id_data.sprongmotion)
     block.variants, block.tokens = codes.shape[0], codes.shape[1]
     block.remake = False
     if block.variant >= block.variants:

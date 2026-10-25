@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, lane, ops
+from bl_ext.smtest.sprongmotion import blocks, engine, lane, model, ops, timeline
 from test_generate import all_codes, codes, setup
 from undos import one_undo
 
@@ -13,7 +13,7 @@ ops.Clipboard.get, ops.Clipboard.set = (lambda: Clip.text), (lambda t: setattr(C
 
 def counting():
     """The model's block calls, counted as made blocks per call; undo with del m.blocks."""
-    m, made = engine.model(), []
+    m, made = model.load(), []
     run = m.blocks
 
     def counted(texts, seconds, seeds, keep, *a):
@@ -37,10 +37,10 @@ def test_copy_paste_keeps_the_take_and_settings():
         assert bpy.ops.sm.block_paste() == {"FINISHED"}
         engine.run_now(obj)
     finally:
-        del engine.model().blocks
+        del model.load().blocks
     new, src = s.blocks[3], s.blocks[1]
     assert s.active == 3 and not any(made), f"a paste of a kept take only decodes: {made}"
-    assert np.array_equal(blocks.takes(new, engine.model().id), blocks.takes(src, engine.model().id))
+    assert np.array_equal(blocks.takes(new, model.load().id), blocks.takes(src, model.load().id))
     assert new.variant == 1 and np.array_equal(codes(new), codes(src))
     assert (new.text, new.seed, new.locked, new.fresh) == (src.text, src.seed, True, True)
     assert np.allclose(new.color, (0.1, 0.2, 0.3)) and new.end - new.start == src.end - src.start
@@ -58,7 +58,7 @@ def test_duplicate_shifts_later_blocks_and_makes_no_take():
         assert bpy.ops.sm.block_duplicate(index=0) == {"FINISHED"}
         engine.run_now(obj)
     finally:
-        del engine.model().blocks
+        del model.load().blocks
     assert not any(made), made
     assert [(b.start, b.end) for b in s.blocks] == [ends[0], (ends[0][1], ends[0][1] + n)] + [
         (a + n, b + n) for a, b in ends[1:]
@@ -79,7 +79,7 @@ def test_paste_onto_another_rig_and_an_empty_lane():
     Clip.text = clip
     assert bpy.ops.sm.block_paste() == {"FINISHED"}
     b = blocks.settings(other).blocks[0]
-    assert len(blocks.settings(other).blocks) == 1 and b.start == 40 and not engine.needs_take(b, engine.model().id)
+    assert len(blocks.settings(other).blocks) == 1 and b.start == 40 and not timeline.needs_take(b, model.load().id)
     assert np.array_equal(codes(b), codes(blocks.settings(obj).blocks[1]))
     engine.run_now(other)
     assert other.animation_data and other.animation_data.action, "the pasted take keys the other rig"
@@ -102,9 +102,9 @@ def test_a_take_from_another_model_is_dropped():
     clip = json.loads(blocks.to_clip(blocks.settings(obj).blocks[0]))
     clip["take"]["model"] = "SprongMotion-14M@older"
     new = blocks.paste(obj, json.dumps(clip), 2)
-    assert new.get("codes") is None and engine.needs_take(new, engine.model().id)
+    assert new.get("codes") is None and timeline.needs_take(new, model.load().id)
     engine.run_now(obj)
-    assert blocks.settings(obj).blocks[3]["model"] == engine.model().id
+    assert blocks.settings(obj).blocks[3]["model"] == model.load().id
 
 
 def test_each_is_one_undo_step():

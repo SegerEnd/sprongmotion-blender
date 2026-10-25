@@ -3,7 +3,7 @@ import traceback
 
 import bpy
 
-from . import anchor, blocks, data, engine, paths, rig
+from . import anchor, blocks, data, engine, model, return_to_start, rig, timeline
 
 SPACES = ("DOPESHEET_EDITOR",)  # next to the blocks; the 3D view only points there
 _matches = {}
@@ -19,11 +19,10 @@ class SM_UL_blocks(bpy.types.UIList):
 
 
 def draw_main(layout, context):
-    m, obj = engine.loaded(), blocks.armature(context)
-    if engine.error():
+    m, obj = model.loaded(), blocks.armature(context)
+    if model.error():
         box = layout.box().column(align=True)
-        for k, line in enumerate(textwrap.wrap(engine.error(), 38)):
-            box.label(text=line, icon="ERROR" if k == 0 else "BLANK1")
+        _wrapped(box, model.error(), "ERROR")
         if m is None:
             box.operator("sm.preferences", icon="PREFERENCES")
     if obj is None:
@@ -56,18 +55,19 @@ def draw_main(layout, context):
 
 
 def _wrapped(layout, text, icon):
+    """Text over several labels, 38 characters wide, the icon on the first."""
     for k, line in enumerate(textwrap.wrap(text, 38)):
         layout.label(text=line, icon=icon if k == 0 else "BLANK1")
 
 
 def _draw_joins(box, obj, b):
     """Continue from Keys on the timeline's first and last block, and why it does not apply when it cannot."""
-    line = [x.uid for x in blocks.settings(obj).blocks if x.enabled and x.text.strip()]
+    line = timeline.uids(blocks.settings(obj))
     if b.uid not in line[:1] + line[-1:]:
         return
     row = box.row()
     row.prop(b, "continues")
-    why = anchor.why_not(obj, engine.loaded())
+    why = anchor.why_not(obj, model.loaded())
     row.active = why is None
     before, _, after = b.anchor_key.partition("|")
     if b.continues and why:
@@ -82,13 +82,12 @@ def _draw_joins(box, obj, b):
 def _draw_active(layout, obj, b):
     box = layout.box()
     box.prop(b, "text", text="")
-    words = engine.unknown_words(b.text, look=False)
-    near = {w: engine.nearest(w) for w in words} if engine.helper() else {}
+    words = model.unknown_words(b.text, look=False)
+    near = {w: model.nearest(w) for w in words} if model.helper() else {}
     note = ", ".join(f"{w} (nearest: {', '.join(near[w])})" if near.get(w) else w for w in words)
-    for k, line in enumerate(textwrap.wrap("Not understood: " + note, 38) if words else []):
-        box.label(text=line, icon="INFO" if k == 0 else "BLANK1")
-    for k, line in enumerate(textwrap.wrap(b.path_note, 38)):
-        box.label(text=line, icon="CURVE_PATH" if k == 0 else "BLANK1")
+    if words:
+        _wrapped(box, "Not understood: " + note, "INFO")
+    _wrapped(box, b.path_note, "CURVE_PATH")
     row = box.row(align=True)
     row.prop(b, "seconds")
     row.prop(b, "color", text="")
@@ -106,13 +105,13 @@ def _draw_active(layout, obj, b):
     row.prop(b, "in_place")
     row = box.row()
     row.prop(b, "back_to_start")
-    why = paths.why_not_back(blocks.settings(obj), b)
+    why = return_to_start.why_not_back(blocks.settings(obj), b)
     row.active = why is None
     if b.back_to_start and why:
         _wrapped(box, why, "INFO")
     row = box.row()
     row.prop(b, "fresh")
-    row.active = not b.fresh or b.uid in engine.blend_uids(blocks.settings(obj))  # grey: a run's first block, or Loop
+    row.active = not b.fresh or b.uid in timeline.blend_uids(blocks.settings(obj))  # grey: a run's first block, or Loop
     row = box.row(align=True)
     row.operator("sm.block_regenerate", icon="FILE_REFRESH")
     row.operator("sm.block_split", text="Split", icon="CENTER_ONLY")
@@ -126,9 +125,7 @@ def _draw_frozen(layout, context):
     frozen = sorted(data.frozen(context.active_object))
     if frozen:
         box = layout.box().column(align=True)
-        names = ", ".join(frozen)
-        for k, line in enumerate(textwrap.wrap(f"Frozen: {names}", 38)):
-            box.label(text=line, icon="FREEZE" if k == 0 else "BLANK1")
+        _wrapped(box, "Frozen: " + ", ".join(frozen), "FREEZE")
         op = box.operator("sm.freeze", text="Unfreeze All", icon="LIGHT_SUN")
         op.unfreeze, op.every = True, True
 

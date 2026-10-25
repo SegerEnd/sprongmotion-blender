@@ -3,7 +3,7 @@ import time
 import addon_utils
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, paths
+from bl_ext.smtest.sprongmotion import blocks, engine, model, paths, timeline
 from test_cleanup import PKG, add_on_props
 
 WALK = "a person walks forward"
@@ -13,7 +13,7 @@ _push = engine.undo_push
 def rig(*texts):
     bpy.context.scene.render.fps = 24
     bpy.context.scene.frame_current = 1
-    assert bpy.ops.sm.add_rig() == {"FINISHED"}, engine.error()
+    assert bpy.ops.sm.add_rig() == {"FINISHED"}, model.error()
     obj = bpy.context.active_object
     s = obj.sprongmotion
     s.auto, s.key_density = False, "EXACT"
@@ -36,13 +36,13 @@ def lengths(obj):
 
 def moving(obj):
     """Per block: whether its own motion travels, as the fit sees it (only those get a new length)."""
-    *_, speed, spans = engine._decode(obj)
-    return [gait > 0 for _, gait in paths.gaits([(f0, f1) for _, f0, f1 in spans], speed, engine.model().fps)]
+    *_, speed, spans = timeline.decode(obj)
+    return [gait > 0 for _, gait in paths.gaits([(f0, f1) for _, f0, f1 in spans], speed, model.load().fps)]
 
 
 def watch():
     """Counts what the model and undo see: (blocks made per model call, undo pushes)."""
-    m, made, out = engine.model(), [], []
+    m, made, out = model.load(), [], []
     run = m.blocks
 
     def counted(texts, seconds, seeds, keep, *a):
@@ -54,7 +54,7 @@ def watch():
 
 
 def unwatch():
-    vars(engine.model()).pop("blocks", None)
+    vars(model.load()).pop("blocks", None)
     engine.undo_push = _push
 
 
@@ -87,8 +87,8 @@ def decode_only(obj, change):
     """change(), then the debounced refresh as the timer runs it: (blocks made per model call, undo pushes, ms)."""
     change()
     bpy.context.view_layer.update()
-    assert obj.session_uid in paths._s.due, "the depsgraph handler saw it move"
-    paths._s.due[obj.session_uid] = 0
+    assert obj.session_uid in paths._state.due, "the depsgraph handler saw it move"
+    paths._state.due[obj.session_uid] = 0
     made, out = watch()
     try:
         t0 = time.perf_counter()
@@ -121,7 +121,7 @@ def test_attach_fits_the_walk_the_root_follows_the_curve_and_moves_only_decode()
     assert d.max() < 0.02 and np.linalg.norm(xy[0] - [1, 0.5]) < 0.02, (d.max(), xy[0])
 
     made, out, ms = decode_only(obj, lambda: setattr(curve.location, "x", curve.location.x + 1))
-    print(f"> curve edit to keys {ms:.0f} ms (decode only, {engine.THREADS or 'all'} model threads)")
+    print(f"> curve edit to keys {ms:.0f} ms (decode only, {model.THREADS or 'all'} model threads)")
     assert made and not any(made) and not out and lengths(obj) == after, (made, out)
     assert np.allclose(pelvis_xy(obj, frames[-1:])[0], xy[-1] + [1, 0], atol=0.02)
 

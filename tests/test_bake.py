@@ -1,6 +1,6 @@
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, keys, retarget
+from bl_ext.smtest.sprongmotion import blocks, engine, keys, model, retarget, takes
 from test_generate import setup
 
 
@@ -10,7 +10,7 @@ def test_one_action_per_block():
     timeline = obj.animation_data.action
     spans = [(b.text, b.end - b.start + 1) for b in blocks.settings(obj).blocks]
     obj.sprongmotion.key_density = "EXACT"
-    exact = engine.block_actions(obj, [f"exact {t}" for t, _ in spans])
+    exact = takes.block_actions(obj, [f"exact {t}" for t, _ in spans])
     assert bpy.ops.sm.bake(keys="0.5", actions="PER_BLOCK", asset=True) == {"FINISHED"}
     assert obj.animation_data.action == timeline, "the rig keeps the timeline"
     for (text, n), ref in zip(spans, exact, strict=True):
@@ -40,7 +40,7 @@ def test_block_actions_are_named_after_their_own_blocks():
 
 def test_bake_without_a_model_says_so():
     obj = setup()
-    prefs = engine.prefs()
+    prefs = model.prefs()
     path, prefs.model_path = prefs.model_path, ""
     try:
         bpy.ops.sm.bake(actions="PER_BLOCK")

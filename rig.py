@@ -77,8 +77,7 @@ def auto_match(arm):
 
 
 def match_structure(arm):
-    """The pelvis is the first bone with two chains going down (legs) and one going up: the spine, which branches into
-    two arms and the neck. Sides come from the rest pose (+x is the character's left); names are not used."""
+    """Match by hierarchy: the pelvis has two chains going down and a spine going up. +x is the character's left."""
     bones = [b for b in arm.bones if b.use_deform] or list(arm.bones)
     if not bones:
         return {}
@@ -184,6 +183,12 @@ def fill_map(obj):
         item.joint, item.bone = j, found.get(j, "")
 
 
+def ensure_map(obj):
+    """Fill the bone map when it is missing or half written (an interrupted fill)."""
+    if len(obj.sprongmotion.bones) != len(JOINTS):
+        fill_map(obj)
+
+
 def bone_map(obj):
     bones = obj.data.bones
     return {JOINTS.index(b.joint): b.bone for b in obj.sprongmotion.bones if b.bone in bones and b.joint in JOINTS}
@@ -219,8 +224,7 @@ def rest_joints(offsets):
 
 
 def own_rig_joints(offsets):
-    """Blender rest positions for the own rig: the reference bone lengths, arms in an A pose. Only single-child chains
-    change direction, so the pose maths stay exact for the joints."""
+    """Rest positions for the add-on's own rig in Blender's frame: the reference bone lengths, arms in an A pose."""
     p = to_blender(rest_joints(offsets))
     a = np.radians(40)
     for side in (1, -1):

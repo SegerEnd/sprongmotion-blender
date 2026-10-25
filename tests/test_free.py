@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import bpy
 import numpy as np
 import undos
-from bl_ext.smtest.sprongmotion import blocks, engine, lane
+from bl_ext.smtest.sprongmotion import blocks, engine, lane, model, timeline
 from test_copy import counting
 from test_rest import ease_frames, pose, prefs, rest
 
@@ -21,7 +21,7 @@ def setup(gaps=(0, 0), auto=False):
     bpy.context.scene.render.fps, bpy.context.scene.frame_current = 24, 1
     bpy.context.scene.tool_settings.use_snap_anim = False
     prefs().after_block, prefs().ease_seconds = "HOLD", 0.4
-    assert bpy.ops.sm.add_rig() == {"FINISHED"}, engine.error()
+    assert bpy.ops.sm.add_rig() == {"FINISHED"}, model.error()
     obj = bpy.context.active_object
     s = obj.sprongmotion
     s.auto, s.key_density = auto, "EXACT"
@@ -35,7 +35,7 @@ def setup(gaps=(0, 0), auto=False):
 
 
 def codes(obj):
-    return [blocks.codes(b, engine.model().id).tolist() for b in blocks.settings(obj).blocks]
+    return [blocks.codes(b, model.load().id).tolist() for b in blocks.settings(obj).blocks]
 
 
 def drag(obj, uid, frames, shift=False):
@@ -59,7 +59,7 @@ def alone(text, seed, frames):
     b = blocks.add(other, text, frames / blocks.fps())
     b.seed = seed
     engine.run_now(other)
-    made = blocks.codes(b, engine.model().id).tolist()
+    made = blocks.codes(b, model.load().id).tolist()
     bpy.data.objects.remove(other)
     bpy.context.view_layer.objects.active = keep
     return made
@@ -118,7 +118,7 @@ def test_fill_gap_in_the_lane():
     try:
         assert bpy.ops.sm.fill_gap(after=0, text="a person turns around") == {"FINISHED"}
     finally:
-        del engine.model().blocks
+        del model.load().blocks
     a, f, b, c = s.blocks
     assert (f.start, f.end, f.text) == (a.end, b.start, "a person turns around")
     assert made == [1] and codes(obj)[:1] + codes(obj)[2:] == before, "one block made, its neighbours kept"
@@ -133,7 +133,7 @@ def test_shift_drag_moves_all():
     try:
         drag(obj, 2, 20, shift=True)
     finally:
-        del engine.model().blocks
+        del model.load().blocks
     assert [(b.start, b.end) for b in s.blocks] == [(x + 20, y + 20) for x, y in spans]
     assert not any(made) and codes(obj) == before
 
@@ -151,17 +151,17 @@ def test_one_undo_step_each():
 
 def test_an_old_chained_file_is_unchanged():
     obj = setup()
-    m, s = engine.model(), blocks.settings(obj)
-    with engine.timeline(obj) as (motion, segs):
+    m, s = model.load(), blocks.settings(obj)
+    with timeline.whole(obj) as (motion, segs):
         spans = [(b.uid, f0, f1) for b, f0, f1 in segs]
-        whole = engine._decoded(s, engine._arrays(motion), spans)
-    for x, y in zip(whole, engine._decode(obj), strict=False):
+        whole = timeline.without_travel(s, timeline.arrays(motion), spans)
+    for x, y in zip(whole, timeline.decode(obj), strict=False):
         assert np.array_equal(x, y), "one run decodes as one motion, as before"
     path = os.path.join(tempfile.mkdtemp(), "chained.blend")
     bpy.ops.wm.save_as_mainfile(filepath=path)
     bpy.ops.wm.open_mainfile(filepath=path)
     s = blocks.settings(bpy.data.objects[undos.NAME])
-    assert not any(engine.needs_take(b, m.id) for b in s.blocks) and engine.fresh_uids(s) == set()
+    assert not any(timeline.needs_take(b, m.id) for b in s.blocks) and timeline.fresh_uids(s) == set()
 
 
 def test_duplicate_goes_right_after_and_shifts_the_touching_blocks():

@@ -1,12 +1,12 @@
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, retarget
+from bl_ext.smtest.sprongmotion import blocks, engine, model, retarget, takes, timeline
 
 
 def setup(auto=False):
     bpy.context.scene.render.fps = 24
     bpy.context.scene.frame_current = 1
-    assert bpy.ops.sm.add_rig() == {"FINISHED"}, engine.error()
+    assert bpy.ops.sm.add_rig() == {"FINISHED"}, model.error()
     obj = bpy.context.active_object
     obj.sprongmotion.auto = auto
     for text, seconds in (("a person walks forward", 2), ("a person jumps", 1), ("a person sits down", 1.5)):
@@ -15,7 +15,7 @@ def setup(auto=False):
 
 
 def codes(b, variant=None):
-    return blocks.codes(b, engine.model().id, variant)
+    return blocks.codes(b, model.load().id, variant)
 
 
 def all_codes(obj):
@@ -31,7 +31,7 @@ def test_generate_chain_and_keys():
     obj.sprongmotion.key_density = "EXACT"
     engine.run_now(obj)
     s = blocks.settings(obj)
-    assert not engine.error(), engine.error()
+    assert not model.error(), model.error()
     assert all(not b.dirty and b.variants == 1 for b in s.blocks)
     assert [b.tokens for b in s.blocks] == [20, 10, 15]
     fc = curve(obj)
@@ -67,13 +67,13 @@ def test_same_seed_same_take():
 def test_timing_stretches_each_take_onto_its_block():
     obj = setup()
     engine.run_now(obj)
-    with engine.timeline(obj) as (_, segs):
-        frames, times = engine.timing(segs)
+    with timeline.whole(obj) as (_, segs):
+        frames, times = takes.timing(segs)
     b = blocks.settings(obj).blocks
     assert frames[0] == b[0].start and frames[-1] == b[-1].end
     assert times[int(np.flatnonzero(frames == b[1].start)[0])] == 2 * b[0].tokens
 
 
 def test_unknown_words():
-    assert "pirouettez" in engine.unknown_words("a person does a pirouettez")
-    assert engine.unknown_words("a person walks forward") == []
+    assert "pirouettez" in model.unknown_words("a person does a pirouettez")
+    assert model.unknown_words("a person walks forward") == []

@@ -1,23 +1,23 @@
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import engine, retarget, rig
+from bl_ext.smtest.sprongmotion import model, retarget, rig
 
 Z_UP = np.array([[1.0, 0, 0], [0, 0, -1], [0, 1, 0]])
 
 
 def take(text="a person walks forward and waves with the right hand", seconds=3.0, seed=3):
-    with engine.model().blocks([text], [seconds], [seed], [None]) as (motion, _):
+    with model.load().blocks([text], [seconds], [seed], [None]) as (motion, _):
         return motion.rotations(), motion.pelvis()
 
 
 def fk(rot, root):
     """Joint positions from the rotations on the reference skeleton, model frame."""
-    return retarget.positions(retarget.globals_(rot), root, engine.model().offsets)
+    return retarget.positions(retarget.globals_(rot), root, model.load().offsets)
 
 
 def apply(obj, rot, root):
     rig.fill_map(obj)
-    target = retarget.Target(obj, engine.model().offsets)
+    target = retarget.Target(obj, model.load().offsets)
     basis, loc = target.pose(rot, root)
     retarget.write(obj, np.arange(1, len(rot) + 1), basis, loc, target.map[0])
     return target
@@ -30,7 +30,7 @@ def posed(obj, frame):
 
 
 def own_rig():
-    return rig.build_own_rig(bpy.context, engine.model().offsets)
+    return rig.build_own_rig(bpy.context, model.load().offsets)
 
 
 def place(obj, loc=(1.0, 2.0, 0.0), rot=(0, 0, 1.2), scale=0.5):

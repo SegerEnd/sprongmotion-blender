@@ -5,14 +5,14 @@ import tempfile
 import bpy
 import numpy as np
 import undos
-from bl_ext.smtest.sprongmotion import blocks, engine
+from bl_ext.smtest.sprongmotion import blocks, engine, model, takes
 from test_copy import counting
 
 
 def setup(auto=False):
     bpy.context.scene.render.fps = 24
     bpy.context.scene.frame_current = 1
-    assert bpy.ops.sm.add_rig() == {"FINISHED"}, engine.error()
+    assert bpy.ops.sm.add_rig() == {"FINISHED"}, model.error()
     obj = bpy.context.active_object
     obj.sprongmotion.auto = auto
     for k, text in enumerate(("a person walks forward", "a person walks forward", "a person walks forward quickly")):
@@ -42,7 +42,7 @@ def test_a_block_in_place_between_travelling_blocks():
     try:
         b.in_place = True
     finally:
-        del engine.model().blocks
+        del model.load().blocks
     assert not any(made), f"toggling only decodes: {made}"
     p = pelvis(obj, range(a.start, c.end))
     mid = p[b.start - a.start : b.end - a.start]
@@ -97,7 +97,7 @@ def test_per_block_bake_respects_it():
     obj = setup()
     s = blocks.settings(obj)
     s.blocks[1].in_place = True
-    walk, still, _ = engine.block_actions(obj, ["walk", "still", "quick"])
+    walk, still, _ = takes.block_actions(obj, ["walk", "still", "quick"])
     for action, moves in ((walk, True), (still, False)):
         obj.animation_data.action = action
         travel = np.ptp(pelvis(obj, range(1, int(action.frame_range[1]) + 1)), axis=0).max()

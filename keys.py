@@ -1,5 +1,6 @@
-"""Keys on the action: a take is written as a few Bezier keys that look the same as a key on every frame (unbaked),
-or as every frame. Key values are numpy arrays [frames, channels]; a group is one bone's quaternion or location."""
+"""Keys on the action: a take as a few Bezier keys that look the same as a key on every frame (unbaked), or as every
+frame. Values are numpy arrays [frames, channels].
+"""
 
 import numpy as np
 
@@ -8,8 +9,7 @@ LINEAR, BEZIER, ALIGNED = 1, 2, 3  # interpolation and handle-type values (forea
 
 
 def fit(x, y, m, keys):
-    """The Bezier through each curve's keys: y and m [F, C] values and slopes at frames x, keys [F, C] bool (first and
-    last frame keyed); handles a third of the way to each neighbour, as write sets them."""
+    """The Bezier through each curve's keys: y and m [F, C] values and slopes at frames x, keys [F, C] bool."""
     n, idx, c = len(x), np.arange(len(x))[:, None], np.arange(y.shape[1])
     p = np.maximum.accumulate(np.where(keys[:-1], idx[:-1], 0), 0)
     p = np.vstack([p, p[-1:]])  # the last frame ends the last span
@@ -32,8 +32,7 @@ def distance(fit, y):
 
 
 def extremes(y, size, width=5):
-    """[F, C] mask: frames where a channel turns by more than size (one or [C]), after a light box smoothing (jitter is
-    not a turn). A turn compares with the turns (or ends) before and after it in its own channel."""
+    """[F, C] mask of frames where a lightly smoothed channel turns by more than size."""
     box = np.ones(width) / width
     s = np.column_stack([np.convolve(np.pad(c, width // 2, mode="edge"), box, mode="valid") for c in y.T])
     turn = np.zeros(s.shape, bool)
@@ -50,8 +49,7 @@ def extremes(y, size, width=5):
 
 
 def _refine(keys, error):
-    """Add the worst frame of every span between keys still off by more than 1 (error(keys, curves) [F, curves],
-    normalised by its limit) to keys [F, C], until no span is. A curve without new keys is done."""
+    """Add the worst frame of every span still off by more than 1 (error is normalised by its limit) until none is."""
     keys, cols = keys.copy(), np.arange(keys.shape[1])
     while len(cols):
         e = error(keys[:, cols], cols)
@@ -67,10 +65,11 @@ def _refine(keys, error):
 
 
 def unbake(x, groups, marks, shared=False):
-    """groups: [(values [F, C], error function, limit)] -> (key indices per group and curve, slopes per group).
-    Each curve gets its own keys within limit / 2, then frames where the bone's angle (or the root's distance) is
-    still over the limit get a key on all its curves; shared: one key set for all bones. Handles take the take's own
-    slope at each key. All curves at once: keys are a mask [frames, curves]."""
+    """groups: [(values [F, C], error function, limit)] to (key indices per group and curve, slopes per group).
+
+    Each curve gets its own keys within limit / 2, then frames still over the limit get a key on all the bone's
+    curves. shared: one key set for all bones.
+    """
     y = np.concatenate([g[0] for g in groups], 1)
     m, n, cols = np.gradient(y, x, axis=0), len(x), np.cumsum([0] + [g[0].shape[1] for g in groups])
     spans = [slice(a, b) for a, b in zip(cols[:-1], cols[1:], strict=True)]
@@ -118,8 +117,10 @@ def remove(kp, drop):
 
 
 def write(fc, x, y, m=None, kind=GENERATED, spans=None):
-    """Keys at frames x with values y (slopes m: Bezier with aligned handles, else linear). Existing keys inside spans
-    [(lo, hi)] and GENERATED keys anywhere go; the user's own keys outside them stay."""
+    """Keys at frames x with values y (slopes m: aligned Bezier, else linear).
+
+    Keys inside spans [(lo, hi)] and GENERATED keys anywhere are replaced, the user's own keys outside them stay.
+    """
     kp = fc.keyframe_points
     co, kinds = get(kp)
     inside = kinds == GENERATED

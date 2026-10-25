@@ -5,7 +5,7 @@ import random
 
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import anchor, blocks, data, engine, retarget, rig
+from bl_ext.smtest.sprongmotion import anchor, blocks, data, engine, model, retarget, rig
 
 FPS, CUT, GAP = 24, 61, (49, 73)
 MOVING = [("a person walks forward", 12), ("a person jogs forward", 3), ("a person dances", 5)]
@@ -124,7 +124,7 @@ def test_continue_from_keys():
 
 def test_edited_keys_make_the_block_dirty():
     obj, _ = continued(*MOVING[0])
-    b, m = blocks.settings(obj).blocks[0], engine.model()
+    b, m = blocks.settings(obj).blocks[0], model.load()
     anchor.check(obj)  # notes what is there
     assert not b.dirty
     fc = retarget.channelbag(obj).fcurves.find('pose.bones["l_elbow"].rotation_quaternion', index=1)
@@ -204,7 +204,7 @@ def test_regenerate_range():
     for text in ("a person walks forward", "a person waves"):
         blocks.add(obj, text, 3).seed = 4
     engine.run_now(obj)
-    m, b = engine.model(), blocks.settings(obj).blocks[0]
+    m, b = model.load(), blocks.settings(obj).blocks[0]
     old = blocks.codes(b, m.id).copy()
     sc = bpy.context.scene
     sc.use_preview_range, sc.frame_preview_start, sc.frame_preview_end = True, b.start + 24, b.start + 48

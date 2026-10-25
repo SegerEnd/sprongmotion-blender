@@ -1,75 +1,22 @@
-"""Motion onto an armature by rest-pose maths, written as GENERATED keys. Quaternions here are numpy x y z w."""
+"""Motion onto an armature by rest-pose maths, written as GENERATED keys."""
 
 import bpy
 import numpy as np
 from bpy_extras import anim_utils
-from mathutils import Matrix
 
 from . import keys
+from .quat import arc, continuous, from_matrix, qinv, qmul, qrot
 from .rig import ARMS, CHILD, JOINTS, LEGS, PARENTS, bone_map, rest_joints
 
-# Standing pitch (degrees above the floor) of the neck->head and ankle->ball lines: the median over 35k standing
-# frames of the training clips. A rig at rest stands so; the model's rest skeleton (and the own rig) has them level.
+# Standing pitch in degrees of the neck->head and ankle->ball lines: the median over 35k standing frames of the
+# training clips. A rig at rest stands so, the model's rest skeleton has them level.
 STANDING = {12: 66.8, 7: -22.9, 8: -22.9}
 FLOOR = {7: 0.04, 8: 0.04, 20: 0.02, 21: 0.02}  # the lowest an ankle or wrist goes above the floor (model metres)
 ENDS = (7, 8, 10, 11, 20, 21)  # ankles, toes, wrists: kept above the floor by IK and the foot's turn, not the lift
 
 
-def qmul(a, b):
-    ax, ay, az, aw = a[..., 0], a[..., 1], a[..., 2], a[..., 3]
-    bx, by, bz, bw = b[..., 0], b[..., 1], b[..., 2], b[..., 3]
-    x = aw * bx + ax * bw + ay * bz - az * by
-    y = aw * by - ax * bz + ay * bw + az * bx
-    z = aw * bz + ax * by - ay * bx + az * bw
-    return np.stack([x, y, z, aw * bw - ax * bx - ay * by - az * bz], -1)
-
-
-def cross(a, b):
-    """np.cross of [..., 3] vectors, the same arithmetic without its per-call overhead (most of qrot's time)."""
-    a0, a1, a2, b0, b1, b2 = a[..., 0], a[..., 1], a[..., 2], b[..., 0], b[..., 1], b[..., 2]
-    return np.stack([a1 * b2 - a2 * b1, a2 * b0 - a0 * b2, a0 * b1 - a1 * b0], -1)
-
-
-def qinv(q):
-    return q * np.array([-1, -1, -1, 1])
-
-
-def qpow(q, t):
-    """Unit quaternions q turned t of the way from identity (slerp)."""
-    q = np.where(q[..., 3:] < 0, -q, q)
-    s = np.linalg.norm(q[..., :3], axis=-1, keepdims=True)
-    half = np.arctan2(s, q[..., 3:]) * t
-    axis = np.divide(q[..., :3], s, out=np.zeros_like(q[..., :3]), where=s > 1e-12)
-    return np.concatenate([axis * np.sin(half), np.cos(half)], -1)
-
-
-def qrot(q, v):
-    u, w = q[..., :3], q[..., 3:]
-    return v + 2 * cross(u, cross(u, v) + w * v)
-
-
-def arc(a, b):
-    """The shortest rotation turning direction a onto direction b (both [..., 3])."""
-    a = a / np.linalg.norm(a, axis=-1, keepdims=True)
-    b = b / np.linalg.norm(b, axis=-1, keepdims=True)
-    q = np.concatenate([cross(a, b), 1 + (a * b).sum(-1, keepdims=True)], -1)
-    side = np.where(np.abs(a[..., :1]) < 0.9, [1.0, 0, 0], [0, 1.0, 0])
-    q = np.where(q[..., 3:] < 1e-8, np.concatenate([cross(a, side), np.zeros_like(q[..., :1])], -1), q)
-    return q / np.linalg.norm(q, axis=-1, keepdims=True)
-
-
-def from_matrix(m):
-    w, x, y, z = Matrix(m).to_3x3().normalized().to_quaternion()
-    return np.array([x, y, z, w])
-
-
-def continuous(q):
-    """Flip quaternions onto the hemisphere of the frame before, so keys interpolate the short way."""
-    flip = np.cumprod(np.where((q[1:] * q[:-1]).sum(-1) < 0, -1.0, 1.0))
-    return np.concatenate([q[:1], q[1:] * flip[:, None]])
-
-
 def globals_(rot):
+    """Joint rotations relative to the parent [F, 22, 4] to world rotations."""
     g = rot.copy()
     for j, p in enumerate(PARENTS):
         if p >= 0:
@@ -78,6 +25,7 @@ def globals_(rot):
 
 
 def positions(g, root, offsets):
+    """Joint positions [F, 22, 3] from world rotations and the root."""
     p = np.zeros((*g.shape[:2], 3))
     p[:, 0] = root
     for j, par in enumerate(PARENTS):
@@ -87,6 +35,7 @@ def positions(g, root, offsets):
 
 
 def resample(arr, times, quat=False):
+    """arr sampled at fractional frames times, linearly (quat: normalised, the short way)."""
     t = np.clip(times, 0, len(arr) - 1)
     i0 = np.floor(t).astype(int)
     i1 = np.minimum(i0 + 1, len(arr) - 1)
@@ -121,16 +70,14 @@ class Target:
         return np.array(self.arm.bones[self.map[j]].head_local)
 
     def _end(self, j):
-        """The joint j's bone aims at: the next mapped joint down the chain (a rig with fewer spine bones skips joints),
-        else the chain's last joint before the toe (a one-bone arm aims at the wrist, a one-bone leg at the ankle)."""
+        """The joint j's bone aims at: the next mapped joint down the chain, else the chain's last before the toe."""
         k = CHILD[j]
         while CHILD[k] >= 0 and k not in self.map and CHILD[k] not in (10, 11):
             k = CHILD[k]
         return k
 
     def _dirs(self, name, j):
-        """Rest direction of joint j's bone in the rig and in the model: towards the next mapped joint (control bones
-        point anywhere), or along the bone at a chain's end."""
+        """Rest direction of joint j's bone in the rig and in the model, towards the next mapped joint."""
         k, src = self.ends[j], self.src @ self.axes.T
         if k in self.map:
             return self._head(k) - self._head(j), src[k] - src[j]
@@ -138,8 +85,7 @@ class Target:
         return np.array(bone.tail_local - bone.head_local), src[k] - src[j]
 
     def _align(self, name, j):
-        """The turn from the rig's rest onto the model's rest. The neck and feet stand as a person stands at the rig's
-        rest, so an upright cartoon head or a flat foot stays so rather than taking the model's level ones."""
+        """The turn from the rig's rest onto the model's rest. The neck and feet keep the rig's standing pitch."""
         rig, model = self._dirs(name, j)
         own = all(self.map.get(i) == n for i, n in enumerate(JOINTS))
         if j not in STANDING or CHILD[j] != self.ends[j] or own:
@@ -149,8 +95,7 @@ class Target:
         return arc(rig, qrot(arc(standing, model), rig))
 
     def _axes(self):
-        """Model axes (left, up, forward) in armature space, from the rig's hips and spine snapped to the nearest axis:
-        Z-up rigs and Y-up imports (FBX) both work."""
+        """Model axes (left, up, forward) in armature space, from the rig's hips and spine snapped to an axis."""
         top = 12 if 12 in self.map else 15
         if not {0, 1, 2, top} <= self.map.keys():
             return np.array([[1.0, 0, 0], [0, 0, -1], [0, 1, 0]])
@@ -167,8 +112,7 @@ class Target:
         return min(np.array(p) @ self.axes[:, 1] for b in self.arm.bones for p in (b.head_local, b.tail_local))
 
     def _world(self, rot, root):
-        """World rotation per mapped joint. A bone that stands for several joints aims at its end joint: a short spine
-        turns with its last joint, so the whole bend shows; a one-bone limb keeps its parent's twist."""
+        """World rotation per mapped joint. A bone standing for several joints aims at its end joint."""
         g = globals_(rot)
         p = positions(g, root, self.offsets)
         out = {}
@@ -180,10 +124,11 @@ class Target:
         return {j: qmul(qmul(self.q, r), qinv(self.q)) for j, r in out.items()}
 
     def pose(self, rot, root, planted=None, start=None, hands=None, floor=False):
-        """rot [F, 22, 4] and root [F, 3] in the model's frame -> ({bone: [F, 4] basis}, pelvis location [F, 3]).
-        planted: [F, 2] left/right foot on the ground, held there by leg IK. start: (offset, yaw) to begin from.
-        hands: [F, 2] left/right hand on the floor, held there at the model's height above it by arm IK. floor: no
-        joint below the floor (wrists and ankles by IK, the rest by lifting the body)."""
+        """rot [F, 22, 4] and root [F, 3] in the model's frame to ({bone: basis [F, 4]}, pelvis location [F, 3]).
+
+        planted, hands: [F, 2] left/right foot or hand held by IK. start: (offset, yaw) to begin from. floor: no
+        joint below the floor.
+        """
         g = self._world(rot, root)
         absolute = {b: qmul(qmul(g[j], self.align[b]), self.rest[b]) for b, j in self.joint_of.items()}
         move = self.ratio * (root - self.src[0]) @ self.axes.T
@@ -205,6 +150,7 @@ class Target:
         return basis, qrot(qinv(self.rest[self.map[0]]), move) if 0 in self.map else None
 
     def _posed(self, absolute, frames, only=None):
+        """World rotations of the bones (only: of these), unmapped ones following their parent or copied bone."""
         posed = {}
         for bone in self.order if only is None else [b for b in self.order if b.name in only]:
             name, parent = bone.name, bone.parent
@@ -218,8 +164,7 @@ class Target:
         return posed
 
     def heads(self, posed, move, only):
-        """Head positions [F, 3] in armature space of the bones in only (with all they depend on); the pelvis bone's
-        parent stays at rest."""
+        """Head positions [F, 3] in armature space of the bones in only; the pelvis bone's parent stays at rest."""
         out, pelvis = {}, self.map.get(0)
         for bone in [b for b in self.order if b.name in only]:
             h, p = np.array(bone.head_local), bone.parent
@@ -231,9 +176,7 @@ class Target:
         return out
 
     def joints(self, basis, loc, frames):
-        """The way back from a pose: the bones' own rotations {bone: [F, 4]} and locations {bone: [F, 3]} (a bone left
-        out is at rest) -> [F, 22, 3] joints in the model's frame. A joint the map leaves out keeps its rest offset
-        from the nearest mapped joint above it."""
+        """The bones' own rotations and locations (missing: at rest) to joints [F, 22, 3] in the model's frame."""
         rot, head, rest0, used = {}, {}, np.zeros((frames, 4)) + [0, 0, 0, 1.0], self.deps(self.map.values())
         for bone in [b for b in self.order if b.name in used]:
             name, p = bone.name, bone.parent
@@ -257,7 +200,7 @@ class Target:
         return (out - self._head(0)) @ self.axes / self.ratio + self.src[0]
 
     def place(self, theta, shift):
-        """pose's start for the model's frame turned by theta [F] about its up axis and moved by shift [F, 3]."""
+        """A start for pose: the model's frame turned by theta [F] about its up axis and moved by shift [F, 3]."""
         half = np.asarray(theta)[..., None] / 2
         q = np.concatenate([np.zeros_like(half), np.sin(half), np.zeros_like(half), np.cos(half)], -1)
         offset = self.ratio * (qrot(q, self.src[0]) + shift - self.src[0]) @ self.axes.T
@@ -273,70 +216,75 @@ class Target:
                 todo += [d for d in (bone.parent and bone.parent.name, self.copies.get(bone.name)) if d]
         return out
 
+    def _heads_of(self, absolute, move, names):
+        """Head positions of the bones names as posed now."""
+        only = self.deps(names)
+        return self.heads(self._posed(absolute, len(move), only), move, only)
+
     def _plant(self, absolute, move, planted, names):
         if None in names or not planted.any():
             return
         hip, knee, ankle = names
-        only = self.deps(names)
-        heads = self.heads(self._posed(absolute, len(move), only), move, only)
+        heads = self._heads_of(absolute, move, names)
         h, k, a = heads[hip], heads[knee], heads[ankle]
         front = qrot(qmul(absolute[hip], qinv(self.rest[hip])), self.axes[:, 2])
         turn_thigh, turn_shin = two_bone(h, k, a, hold(a, planted, up=self.axes[:, 1]), front)
         absolute[hip], absolute[knee] = qmul(turn_thigh, absolute[hip]), qmul(turn_shin, absolute[knee])
 
     def _ground(self, absolute, move, ground, rot, root, hands, floor):
-        """The floor steps of pose, in order: lift the body, hands onto the floor, limb ends and toe tips above it."""
+        """Lift the body, put the hands on the floor, then keep limb ends and toe tips above it."""
         up = self.axes[:, 1]
         if floor:
             move = move + self._lift(absolute, move, ground)[:, None] * up
         if hands is not None:
-            wrist = positions(globals_(rot), root, self.offsets)[..., 1]
+            heights = positions(globals_(rot), root, self.offsets)[..., 1]
             for chain, on in zip(ARMS, hands.T, strict=True):
-                at = ground + self.ratio * wrist[:, chain[2]]
-                self._reach(
-                    absolute, move, chain, lambda a, on=on, at=at: hold(a, on, at=a + (at - a @ up)[:, None] * up)
-                )
+                limb = self._limb(absolute, move, chain)
+                if limb is not None:
+                    end, floor_at = limb[3], ground + self.ratio * heights[:, chain[2]]
+                    self._reach(absolute, chain, limb, hold(end, on, at=end + (floor_at - end @ up)[:, None] * up))
         if floor:
             for chain in LEGS + ARMS:
-                lo = ground + self.ratio * FLOOR[chain[2]]
-                self._reach(absolute, move, chain, lambda a, lo=lo: a + np.maximum(lo - a @ up, 0)[:, None] * up)
+                limb = self._limb(absolute, move, chain)
+                if limb is not None:
+                    end, lowest = limb[3], ground + self.ratio * FLOOR[chain[2]]
+                    self._reach(absolute, chain, limb, end + np.maximum(lowest - end @ up, 0)[:, None] * up)
             for ankle in (7, 8):
                 self._tiptoe(absolute, move, ankle, ground)
         return move
 
-    def _reach(self, absolute, move, chain, aim):
-        """Two-bone IK of a limb (joints chain: upper, middle, end) onto aim(end heads [F, 3]) -> targets, on the
-        frames where the target moves the end. The knee or elbow keeps its bend, a little towards the front or back."""
+    def _limb(self, absolute, move, chain):
+        """(bone names, upper, middle and end heads) of a limb's joints chain, None when one is not mapped."""
         names = [self.map.get(j) for j in chain]
         if None in names:
-            return
-        upper, middle, end = names
-        only = self.deps(names)
-        heads = self.heads(self._posed(absolute, len(move), only), move, only)
-        h, k, a = heads[upper], heads[middle], heads[end]
-        t = aim(a)
-        on = np.linalg.norm(t - a, axis=1) > 1e-6
+            return None
+        heads = self._heads_of(absolute, move, names)
+        return names, *(heads[name] for name in names)
+
+    def _reach(self, absolute, chain, limb, target):
+        """Two-bone IK of a limb onto target [F, 3] where it moves the end. The bend leans a little forward or back."""
+        (upper, middle, _), h, k, a = limb
+        on = np.linalg.norm(target - a, axis=1) > 1e-6
         if not on.any():
             return
         fwd = qrot(qmul(absolute[upper], qinv(self.rest[upper])), self.axes[:, 2])
-        turns = two_bone(h[on], k[on], a[on], t[on], (0.1 if chain in LEGS else -0.1) * fwd[on])
+        turns = two_bone(h[on], k[on], a[on], target[on], (0.1 if chain in LEGS else -0.1) * fwd[on])
         for name, turn in zip((upper, middle), turns, strict=True):
             q = np.array(absolute[name])
             q[on] = qmul(turn, q[on])
             absolute[name] = q
 
     def _lift(self, absolute, move, ground, ease=4):
-        """[F] how far to lift the body so no joint but the limb ends is below the floor, eased over a few frames."""
+        """[F] how far to lift the body so no joint but the limb ends is below the floor, eased."""
         names = [b for j, b in self.map.items() if j not in ENDS]
-        only = self.deps(names)
-        heads = self.heads(self._posed(absolute, len(move), only), move, only)
+        heads = self._heads_of(absolute, move, names)
         need = np.maximum(ground - np.min([heads[b] @ self.axes[:, 1] for b in names], 0), 0)
         pad = np.pad(need, 2 * ease, mode="edge")
         peak = np.max([pad[i : i + len(need) + 2 * ease] for i in range(2 * ease + 1)], 0)
         return np.convolve(peak, np.full(2 * ease + 1, 1 / (2 * ease + 1)), "valid")
 
     def _tiptoe(self, absolute, move, ankle, ground):
-        """A foot whose tip (toe joint, else the foot bone's tail) is below the floor turns about the ankle onto it."""
+        """Turn a foot about the ankle so its tip (toe joint, else the bone's tail) stays on the floor."""
         foot, toe = self.map.get(ankle), self.map.get(ankle + 3)
         if foot is None:
             return
@@ -360,9 +308,10 @@ class Target:
 
 
 def hold(a, planted, blend=8, up=None, at=None):
-    """Ankle targets: over each planted span the mean position; the shift fades out over a few frames (smoothstep) and
-    carries across short gaps, so a target never jumps. up: only the floor position is held, the ankle keeps its own
-    height (the heel and toe roll), so the leg is not pulled straight. at: the positions to hold in place of a's own."""
+    """Ankle targets held at each planted span's mean, faded in and out (smoothstep).
+
+    up: hold only the floor position, the ankle keeps its height. at: positions to hold instead of a's own.
+    """
     f, idx = np.arange(len(a)), np.flatnonzero(planted)
     if not len(idx):
         return a
@@ -378,9 +327,10 @@ def hold(a, planted, blend=8, up=None, at=None):
 
 
 def two_bone(h, k, a, t, front):
-    """Analytic two-bone IK per frame: hip h, knee k, ankle a, ankle target t -> (thigh turn, shin turn) as world
-    quaternions. The knee bends forward, turned with the hip, and towards where it was; a soft limit at 99% of the reach
-    keeps the leg from snapping straight."""
+    """Analytic two-bone IK per frame: hip h, knee k, ankle a, target t to (thigh turn, shin turn).
+
+    The knee bends towards front. A soft limit at 99 % of the reach keeps the leg from snapping straight.
+    """
     l1, l2 = np.linalg.norm(k - h, axis=1), np.linalg.norm(a - k, axis=1)
     d = t - h
     reach, dist = l1 + l2, np.linalg.norm(d, axis=1)
@@ -398,7 +348,7 @@ def two_bone(h, k, a, t, front):
 
 
 def hand_contacts(joints, fps, height=0.09, speed=0.4):
-    """[F, 2] left/right wrist on the floor in a motion (joints [F, 22, 3], metres, Y up): low and nearly still."""
+    """[F, 2] left/right wrist on the floor: low and nearly still (joints [F, 22, 3], metres, Y up)."""
     w = joints[:, [20, 21]]
     v = np.linalg.norm(np.diff(w[..., [0, 2]], axis=0, prepend=w[:1, :, [0, 2]]), axis=-1) * fps
     return (w[..., 1] < height) & (v < speed)
@@ -412,8 +362,7 @@ def _snap(v):
 
 
 def _copies(obj):
-    """Bone -> the bone whose rotation it copies (Copy Rotation / Copy Transforms on the same armature), so control
-    rigs that isolate a limb or the neck from their parent are followed as Blender evaluates them."""
+    """Bone -> the bone whose rotation it copies (Copy Rotation / Copy Transforms on the same armature)."""
     out = {}
     for pb in obj.pose.bones:
         for c in pb.constraints:
@@ -439,8 +388,7 @@ def _topological(bones, copies):
 
 
 def start_pose(obj, target, frame):
-    """(offset, yaw) in armature space: the root bone's own keyed pose (not GENERATED) at or before frame, so a take
-    continues from where the user left the character. None without such keys."""
+    """(offset, yaw) in armature space of the root bone's own keys at or before frame, None without any."""
     name, ad = target.map.get(0), obj.animation_data
     if name is None or ad is None or ad.action is None or ad.action_slot is None:
         return None
@@ -465,7 +413,7 @@ def start_pose(obj, target, frame):
 
 
 def channelbag(obj, action=None):
-    """A linked or overridden action (library overrides start with one) is replaced by a local copy."""
+    """The channels of obj's action (or action), a local copy replacing a linked or overridden one."""
     if action is not None:
         slot = action.slots.get("OB" + obj.name) or action.slots.new("OBJECT", obj.name)
         return anim_utils.action_ensure_channelbag_for_slot(action, slot)
@@ -478,8 +426,7 @@ def channelbag(obj, action=None):
 
 
 def write(obj, frames, basis, location=None, root_bone=None, fit=None, action=None, kind=None):
-    """The take onto obj's action. fit: (degrees, cm, marked frames, shared, {bone: frames to hold 8x tighter}) to
-    write it unbaked, else every frame. Planted feet need the tight frames: small leg and hip errors make them slide."""
+    """Key the take on obj's action. fit: (degrees, cm, marks, shared, {bone: tight frames}), None keys every frame."""
     cb, groups = channelbag(obj, action), []
     for name, q in basis.items():
         if obj.pose.bones[name].rotation_mode != "QUATERNION":
@@ -504,47 +451,3 @@ def write(obj, frames, basis, location=None, root_bone=None, fit=None, action=No
         for i, k in enumerate(ks):
             fc = cb.fcurves.ensure(path, index=i, group_name=name)
             keys.write(fc, frames[k], values[k, i], None if m is None else m[k, i], kind or keys.GENERATED, spans)
-
-
-def to_rest(frames, basis, loc, own, n, hold=False, up=None):
-    """Frames after each stretch of the take where nothing follows (no block, no own key in own): the bones ease to
-    rest with a smoothstep over n frames and hold it (a frame more: a flat end). Into a later block they ease back
-    over the same time, or over half the gap if it is shorter. hold: the stretch's last pose instead of rest, only in
-    gaps. up: the root bone's local up axis; its location eases to rest only along it, so the rig stays where it
-    walked to. -> (frames, {bone: [F, 4]}, location [F, 3] or None, frames to key: each stretch's end and where a hold
-    starts and ends)."""
-    ends = np.r_[np.flatnonzero(np.diff(frames) > 1), len(frames) - 1]
-    out, marks = [], []
-    for i in ends:
-        e = frames[i]
-        s = frames[i + 1] if i + 1 < len(frames) else None
-        if ((own > e) & (own < (np.inf if s is None else s))).any() or (hold and s is None):
-            continue
-        f = np.arange(e + 1, e + n + 2 if s is None else s)
-        d = n if s is None else min(n, (s - e) / 2)
-        near = np.minimum(f - e, np.inf if s is None else s - f)
-        t = np.clip(near / d, 0, 1)
-        w = t * t * (3 - 2 * t)
-        side = np.where(f - e <= near, i, i + 1)  # the pose each frame eases from: the stretch's end or what follows
-        out.append((f, w, side, np.full(len(f), i)))
-        full = w == 1
-        inner = full & np.r_[False, full[:-1]] & np.r_[full[1:], False]
-        flat = inner if inner.any() else full  # keys a frame into the hold: their slope is zero there
-        marks += [e, *f[flat & ~(np.r_[False, flat[:-1]] & np.r_[flat[1:], False])]]
-    if not out:
-        return frames, basis, loc, []
-    f, w, side, end = (np.concatenate(x) for x in zip(*out, strict=True))
-    order = np.argsort(np.r_[frames, f], kind="stable")
-
-    def eased(v, rest):
-        rest = v[end] if hold else rest
-        r = np.where((v[side] * rest).sum(1, keepdims=True) < 0, -rest, rest) if v.shape[1] == 4 else rest
-        x = v[side] * (1 - w[:, None]) + r * w[:, None]
-        x = x / np.linalg.norm(x, axis=1, keepdims=True) if v.shape[1] == 4 else x
-        return np.concatenate([v, x])[order]
-
-    unit = np.array([0, 0, 0, 1.0])
-    rested = {name: eased(q, unit) for name, q in basis.items()}
-    if loc is not None:
-        loc = eased(loc, np.zeros(3) if up is None else loc[end] - (loc[end] @ up)[:, None] * up)
-    return np.r_[frames, f][order], rested, loc, marks

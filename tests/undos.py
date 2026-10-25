@@ -3,14 +3,14 @@ would run them."""
 
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, paths, retarget
+from bl_ext.smtest.sprongmotion import blocks, engine, model, paths, retarget
 
 NAME = "SprongMotion Rig"
 
 
 def state():
     obj = bpy.data.objects[NAME]
-    s, m = blocks.settings(obj), engine.model()
+    s, m = blocks.settings(obj), model.load()
     fc = retarget.channelbag(obj).fcurves.find('pose.bones["l_knee"].rotation_quaternion', index=1)
     keys = np.array([k.co for k in fc.keyframe_points]).round(6).tolist() if fc else []
     codes = [None if (t := blocks.codes(b, m.id)) is None else t.tolist() for b in s.blocks]
@@ -25,8 +25,8 @@ def run_timers():
             return
         for f in due:
             bpy.app.timers.unregister(f)
-            engine._s.due.update(dict.fromkeys(engine._s.due, 0))
-            paths._s.due.update(dict.fromkeys(paths._s.due, 0))
+            engine._state.due.update(dict.fromkeys(engine._state.due, 0))
+            paths._state.due.update(dict.fromkeys(paths._state.due, 0))
             if f() is not None:
                 bpy.app.timers.register(f, first_interval=0)
 
@@ -38,7 +38,7 @@ def one_undo(edit, label, makes=True):
     run_timers()
     bpy.ops.ed.undo_push(message="before")
     before = state()
-    m, made, push = engine.model(), [], engine.undo_push
+    m, made, push = model.load(), [], engine.undo_push
     run = m.blocks
 
     def counted(texts, seconds, seeds, keep, *a):

@@ -1,11 +1,11 @@
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, PointerProperty, StringProperty
 
-from . import anchor, engine, lane, ops, paths, props, ui
+from . import anchor, engine, lane, lane_draw, model, ops, paths, props, ui
 
 
 def _reload(_prefs, _context):
-    engine.model()
+    model.load()
 
 
 def _after_block(_prefs, _context):
@@ -70,8 +70,8 @@ class SMPreferences(bpy.types.AddonPreferences):
         col = self.layout.column()
         col.prop(self, "library_path")
         col.prop(self, "model_path")
-        m = engine.loaded()
-        col.label(text=f"{m.id}, blocks up to {m.max_seconds:g} s" if m else engine.error(),
+        m = model.loaded()
+        col.label(text=f"{m.id}, blocks up to {m.max_seconds:g} s" if m else model.error(),
                   icon="CHECKMARK" if m else "ERROR")  # fmt: skip
         col.prop(self, "text_edit")
         col.prop(self, "typing_help")
@@ -122,6 +122,7 @@ def register():
     ops.add_keymaps(ops.KEYMAPS, _keymaps)
     ui.register_menus()
     lane.register()
+    lane_draw.register()
     bpy.app.timers.register(_load, first_interval=0.1)
 
 
@@ -132,7 +133,7 @@ def _upgrade():
 
 
 def _load():
-    engine.model()  # at startup, outside any draw
+    model.load()  # at startup, outside any draw
     _upgrade()
     paths.on_file()
     anchor.on_file()
@@ -141,6 +142,7 @@ def _load():
 def unregister():
     if bpy.app.timers.is_registered(_load):
         bpy.app.timers.unregister(_load)
+    lane_draw.unregister()
     lane.unregister()
     ui.unregister_menus()
     ops.remove_keymaps(_keymaps)

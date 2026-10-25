@@ -2,7 +2,7 @@
 
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, paths, retarget
+from bl_ext.smtest.sprongmotion import blocks, engine, model, retarget, return_to_start, timeline
 from test_paths import WALK, lengths, pelvis_xy, rig, s_curve
 from undos import NAME, one_undo
 
@@ -25,16 +25,16 @@ def radius(xy, stride=1.4):
 
 def test_a_walk_returns_to_the_start_and_the_block_before_stays():
     obj = rig((WALK, 3), ("a person walks", 3))
-    s, m = blocks.settings(obj), engine.model()
+    s, m = blocks.settings(obj), model.load()
     s.blocks[1].seed = 4  # a take that keeps walking when it is longer
     a = s.blocks[0]
     codes = blocks.codes(a, m.id).tolist()
-    way, made = paths.way_back, []
-    paths.way_back = lambda *a: made.append(way(*a)) or made[-1]
+    way, made = return_to_start.way_back, []
+    return_to_start.way_back = lambda *a: made.append(way(*a)) or made[-1]
     try:
         one_undo(lambda o: setattr(blocks.settings(o).blocks[1], "back_to_start", True), "Return to Start")
     finally:
-        paths.way_back = way
+        return_to_start.way_back = way
     obj = bpy.data.objects[NAME]
     s = blocks.settings(obj)
     a, b = s.blocks
@@ -76,7 +76,7 @@ def test_an_idle_block_gets_a_note_and_a_user_path_wins():
     assert not s.blocks[1].path_note
     s.blocks[1].back_to_start = True
     s.path = s_curve()
-    assert paths.why_not_back(s, s.blocks[1]) and not paths.walks_back(s, s.blocks[1])
+    assert return_to_start.why_not_back(s, s.blocks[1]) and not return_to_start.walks_back(s, s.blocks[1])
 
 
 def test_copy_paste_and_split_carry_it_and_clear_motion_removes_it():
@@ -109,5 +109,5 @@ def test_a_block_at_the_limit_before_a_block_that_needs_a_take_is_made():
     s.blocks[1].text = "a person jumps"
     blocks.mark_dirty(obj, s.blocks[0].uid, s.blocks[1].uid)
     engine.run_now(obj)
-    assert lengths(obj)[0] == blocks.limits()[1] and not engine.error(), (lengths(obj), engine.error())
-    assert not any(engine.needs_take(b, engine.model().id) for b in s.blocks)
+    assert lengths(obj)[0] == blocks.limits()[1] and not model.error(), (lengths(obj), model.error())
+    assert not any(timeline.needs_take(b, model.load().id) for b in s.blocks)

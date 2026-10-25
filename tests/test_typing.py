@@ -3,7 +3,7 @@ import time
 from types import SimpleNamespace
 
 import bpy
-from bl_ext.smtest.sprongmotion import blocks, engine, lane
+from bl_ext.smtest.sprongmotion import block_text, blocks, model
 
 
 def key(type_, unicode=""):
@@ -11,33 +11,33 @@ def key(type_, unicode=""):
 
 
 def start(text=""):
-    assert bpy.ops.sm.add_rig() == {"FINISHED"}, engine.error()
+    assert bpy.ops.sm.add_rig() == {"FINISHED"}, model.error()
     obj = bpy.context.active_object
     obj.sprongmotion.auto = False
     blocks.add(obj, text, 2)
-    assert engine.model() is not None, engine.error()
-    lane.begin(blocks.settings(obj).blocks[0].uid, text)
-    return lane._s.help
+    assert model.load() is not None, model.error()
+    block_text.begin(blocks.settings(obj).blocks[0].uid, text)
+    return block_text._state.help
 
 
 def write(text):
     for ch in text:
-        lane.typed(key("SPACE" if ch == " " else ch.upper(), ch))
+        block_text.typed(key("SPACE" if ch == " " else ch.upper(), ch))
 
 
 def press(type_):
-    took = lane.help_key(key(type_))
-    lane.typed(key(type_))
+    took = block_text.help_key(key(type_))
+    block_text.typed(key(type_))
     return took
 
 
 def paused(h):
-    h.last -= lane.PAUSE
-    lane._pause()
+    h.last -= block_text.PAUSE
+    block_text._pause()
 
 
 def text():
-    return lane._s.typing[1]
+    return block_text._state.typing[1]
 
 
 def test_ghost_tab_takes_it():
@@ -47,25 +47,27 @@ def test_ghost_tab_takes_it():
     paused(h)
     assert h.rows == [], "no word list while a ghost shows"
     assert press("TAB") and h.ghost == ""
-    assert text().startswith("a person sits down on ") and text() in engine.helper().sentences
+    assert text().startswith("a person sits down on ") and text() in model.helper().sentences
 
 
 def test_esc_dismisses_and_typing_on_shows_again():
     h = start()
     write("a person sits d")
-    assert press("ESC") and h.ghost == "" and lane._s.typing is not None, "Esc hides the ghost, the edit goes on"
+    assert press("ESC") and h.ghost == "" and block_text._state.typing is not None, (
+        "Esc hides the ghost, the edit goes on"
+    )
     paused(h)
     assert h.rows == []
     write("o")
     assert h.ghost.startswith("wn ")
-    assert not lane.help_key(key("RET")), "Enter ends the edit, it does not take the ghost"
+    assert not block_text.help_key(key("RET")), "Enter ends the edit, it does not take the ghost"
 
 
 def test_word_list_only_after_the_pause():
     h = start()
     write("the man stro")
     assert h.ghost == "" and h.rows == []
-    lane._pause()
+    block_text._pause()
     assert h.rows == [], "no list before the pause"
     paused(h)
     assert 0 < len(h.rows) <= 5 and all(w.startswith("stro") for w in h.rows)
@@ -80,31 +82,31 @@ def test_nothing_for_empty_text():
     write(" ")
     paused(h)
     assert (h.ghost, h.rows) == ("", [])
-    assert lane._suggest(None, None, "") == []
+    assert block_text._suggest(None, None, "") == []
 
 
 def test_preference_off_shows_nothing():
-    engine.prefs().typing_help = False
+    model.prefs().typing_help = False
     try:
         h = start()
         write("a person sits d")
         paused(h)
         write(" the man stro")
         paused(h)
-        assert (h.ghost, h.rows) == ("", []) and lane._suggest(None, None, "a person sits d") == []
-        assert engine.helper() is None, "the sidebar's note then leaves out the nearest words"
+        assert (h.ghost, h.rows) == ("", []) and block_text._suggest(None, None, "a person sits d") == []
+        assert model.helper() is None, "the sidebar's note then leaves out the nearest words"
     finally:
-        engine.prefs().typing_help = True
+        model.prefs().typing_help = True
 
 
 def test_popup_list_and_nearest_words():
     start()
-    got = lane._suggest(None, None, "a person sits d")
-    assert got[0] in engine.helper().sentences and got[0].startswith("a person sits down")
-    got = lane._suggest(None, None, "the man stro")
+    got = block_text._suggest(None, None, "a person sits d")
+    assert got[0] in model.helper().sentences and got[0].startswith("a person sits down")
+    got = block_text._suggest(None, None, "the man stro")
     assert 0 < len(got) <= 5 and all(g.startswith("the man stro") for g in got)
-    assert engine.unknown_words("a persn jumsp") == ["persn", "jumsp"]
-    assert "person" in engine.nearest("persn") and "jump" in engine.nearest("jumsp")
+    assert model.unknown_words("a persn jumsp") == ["persn", "jumsp"]
+    assert "person" in model.nearest("persn") and "jump" in model.nearest("jumsp")
 
 
 def test_typing_cost():
@@ -112,11 +114,11 @@ def test_typing_cost():
     start()
     sentence = "a person walks forward and sits down on a chair"
     t0 = time.perf_counter()
-    engine.unload()
-    engine.model()
+    model.unload()
+    model.load()
     load = time.perf_counter() - t0
-    helper = engine.helper()
-    lane.begin(lane._s.typing[0], "")
+    helper = model.helper()
+    block_text.begin(block_text._state.typing[0], "")
     keys, pause = [], []
     for ch in sentence:
         helper.cache.clear()
@@ -124,7 +126,7 @@ def test_typing_cost():
         write(ch)
         keys.append(time.perf_counter() - t0)
         t0 = time.perf_counter()
-        paused(lane._s.help)
+        paused(block_text._state.help)
         pause.append(time.perf_counter() - t0)
     fresh = []
     for k in range(len(sentence)):

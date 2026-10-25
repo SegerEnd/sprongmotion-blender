@@ -1,6 +1,6 @@
-"""Typing help for a block's text, completions only (the text stays the user's): the rest of a sentence from a fixed
-list (ghost text after the caret), ranked by the model's text encoder, and the word at the caret completed from the
-words the model knows (a small list)."""
+"""Typing help for a block's text: the rest of a sentence from a fixed list (ghost text), ranked by the model's text
+encoder, and the word at the caret completed from the words the model knows.
+"""
 
 import difflib
 import pathlib
@@ -38,8 +38,7 @@ class Help:
         self.cache = {}
 
     def sentence(self, text, keep=""):
-        """The sentence that best goes on from text (it starts with it and is longer), or "". keep: the one shown
-        so far, kept while it still fits, so the ghost does not jump while the user types what it shows."""
+        """The sentence that best goes on from text, or "". keep: the one shown so far, kept while it still fits."""
         low = text.lower()
         if len(text.strip()) < MIN_CHARS:
             return ""
@@ -52,8 +51,7 @@ class Help:
         return self.cache[low]
 
     def _best(self, text, low):
-        """The word being typed (or the next one) becomes the one most candidates go on with, as the encoder cannot
-        read half a word; then the candidate nearest to the text with that word, by the encoder's pooled vector."""
+        """The candidate going on with the word most candidates continue with, nearest to text by the encoder."""
         hits = [i for i, s in enumerate(self.lower) if len(s) > len(low) and s.startswith(low)]
         if len(hits) > 1:
             ends = [_REST.match(self.lower[i], len(low)).group() for i in hits]
@@ -68,8 +66,7 @@ class Help:
         return self.sentence(text, keep)[len(text) :]
 
     def complete(self, text, caret):
-        """Known words that finish the partly typed word before the caret, the words of our sentences first (at most
-        ROWS). Nothing inside a word, for a word the model knows already, or for a short start."""
+        """Known words that finish the partly typed word before the caret, at most ROWS, our sentences' words first."""
         word = _WORD.search(text[:caret].lower()).group()
         if len(word) < MIN_LETTERS or word in self.known or text[caret : caret + 1].isalpha():
             return []
@@ -99,8 +96,7 @@ def kind(event):
 
 
 def take(kind, text, caret, ghost, rows, pick):
-    """A key for the typing help while it shows ghost (text after the caret) or rows (the word list, pick
-    highlighted): (text, caret, pick, hide) after it, or None when the key is the text field's own."""
+    """What a key does while the help shows: (text, caret, pick, hide), None for the text field's own keys."""
     if rows and kind in {"tab", "enter"}:
         return (*insert(text, caret, rows[pick]), 0, False)
     if rows and kind in {"up", "down"}:

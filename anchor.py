@@ -1,16 +1,15 @@
-"""Continue from Keys and Fill Gap: the rig's own keys right before the first block and right after the last one are
-read back to the 22 joints and join the generate call as context blocks, so the take leads out of and into them. The
-keys themselves are never written."""
+"""Continue from Keys and Fill Gap: the rig's own keys next to the timeline join the generate call as context
+blocks, so the take leads out of and into them. The keys themselves are never written.
+"""
 
 import hashlib
-import time
 from collections import namedtuple
 
 import bpy
 import numpy as np
 from bpy_extras import anim_utils
 
-from . import blocks, data, engine, keys, retarget, rig
+from . import blocks, data, engine, keys, model, quat, retarget, rig
 
 NEAR = 2  # frames: a block starts where the keys end (or ends where they start again) within this
 SECONDS = 2.0  # of keys read on each side at most
@@ -24,15 +23,16 @@ WARN, STRIDE, WARN_TURN = 0.25, 0.1, 30.0
 DEBOUNCE = 0.3
 
 Spec = namedtuple("Spec", "seam times key")  # which keys a side reads: its seam frame, the scene frames, their hash
-# a context block for engine._blocks (uid, text, seed, codes as it reads them) and what joins it to the keys: the seam,
-# the keys' joints at its decoded frames [frames, 22, 3] and their own pose at the seam ({bone: quat}, {bone: loc})
+# a context block for timeline.run_blocks, and what joins it to the keys: the seam, the keys' joints at its decoded
+# frames [frames, 22, 3] and their own pose at the seam ({bone: quat}, {bone: loc})
 Side = namedtuple("Side", "uid text seed codes frames seam joints pose key")
 
 
 class _State:
     def __init__(self):
         self.cache = {}  # key -> Side
-        self.due, self.seen = {}, {}  # by the rig's session_uid: when to look again, the block keys last seen
+        self.due = {}  # rig session_uid -> when to look at its keys again
+        self.seen = {}  # rig session_uid -> the block keys last seen
 
 
 _s = _State()
@@ -86,7 +86,7 @@ def gap(obj, frame):
 
 
 def selected_gap(obj, frame):
-    """(start, end) between selected keys of the rig: the gap around frame, else the widest one; None without two."""
+    """(start, end) between the rig's selected keys around frame, else the widest such gap. None without two."""
     cb = channelbag(obj)
     picked = [np.zeros(0)]
     for fc in cb.fcurves if cb else ():
@@ -104,8 +104,7 @@ def selected_gap(obj, frame):
 
 
 def clear(obj, lo, hi):
-    """The rig's own keys strictly between lo and hi on its mapped bones that are not frozen go (a take written there
-    would replace them)."""
+    """Remove the rig's own keys strictly between lo and hi on its mapped bones that are not frozen."""
     cb, names = channelbag(obj), set(rig.bone_map(obj).values()) - data.frozen(obj)
     for fc in cb.fcurves if cb else ():
         if _bone(fc) in names:
@@ -114,14 +113,10 @@ def clear(obj, lo, hi):
             fc.update()
 
 
-def _timeline(s):
-    return [b for b in s.blocks if b.enabled and b.text.strip()]
-
-
 def plan(obj, m):
     """(before, after) Specs: the keys that join the timeline's first and last block, None where none do."""
     s = blocks.settings(obj)
-    line = _timeline(s) if s else []
+    line = blocks.timeline_blocks(s) if s else []
     if not line or m is None or why_not(obj, m) or not len(obj.sprongmotion.bones):
         return None, None
     frames, fps = own_frames(obj), blocks.fps()
@@ -142,8 +137,7 @@ def plan(obj, m):
 
 
 def _spec(obj, side, seam, times):
-    """The hash covers what the read depends on: the map, the frozen bones and the own keys of the read bones from
-    the last one before the window on (before the block; after: up to the first one past it)."""
+    """A Spec whose hash covers what the read depends on: the map, the frozen bones and the nearby own keys."""
     parts = [side, float(seam), times.round(4).tobytes(), sorted(rig.bone_map(obj).items()), sorted(data.frozen(obj))]
     cb = channelbag(obj)
     for fc in cb.fcurves if cb else ():
@@ -158,8 +152,7 @@ def _spec(obj, side, seam, times):
 
 
 def sides(obj, m):
-    """(before, after) Sides for the timeline as it is now, None where no keys join it. Encoded once per state of
-    the keys (cached)."""
+    """(before, after) Sides for the timeline as it is now, None where no keys join it. Cached per state of the keys."""
     specs = plan(obj, m)
     if not any(specs):
         return None, None
@@ -176,7 +169,7 @@ def sides(obj, m):
 
 def block_keys(s, found):
     """{block uid: the keys its take joins, "before|after" hashes} for the first and last block of the timeline."""
-    line = _timeline(s)
+    line = blocks.timeline_blocks(s)
     if not line:
         return {}
     out = {b.uid: "|" for b in line}
@@ -187,8 +180,7 @@ def block_keys(s, found):
 
 
 def _read(obj, target, m, uid, spec):
-    """The keys' motion at spec's frames as joints, its codes and the own pose at the key frame past the seam and at
-    the seam."""
+    """The keys at spec's frames as a Side: joints, codes and the own pose at the seam and the frame past it."""
     before = uid == -1
     times = np.r_[spec.times, spec.seam + (-1 if before else 1), spec.seam]
     basis, loc, own = _sample(obj, target, times, spec.seam, before)
@@ -199,9 +191,7 @@ def _read(obj, target, m, uid, spec):
 
 
 def _sample(obj, target, times, seam, before):
-    """The bones' own rotations and locations at times from the rig's own keys alone: each curve evaluated up to its
-    last own key at or before the seam (after: from its first at or after it) and held past it; a curve without any
-    there is at rest. Also the bones with own keys there."""
+    """The bones' (basis, location, bones with own keys) at times from the rig's own keys alone, held past the seam."""
     cb, basis, loc, own = channelbag(obj), {}, {}, set()
     for name in target.deps(target.map.values()):
         mode = obj.pose.bones[name].rotation_mode
@@ -215,6 +205,7 @@ def _sample(obj, target, times, seam, before):
 
 
 def _channels(cb, name, prop, times, seam, before):
+    """One bone property's own-key values at times, held past the seam; and whether it had any keys there."""
     n = 4 if prop == "rotation_quaternion" else 3
     out, had = np.zeros((len(times), n)), False
     if prop == "rotation_quaternion":
@@ -236,7 +227,7 @@ def _euler(e, order):
     for axis in order:
         k, turn = "XYZ".index(axis), np.zeros((len(e), 4))
         turn[:, k], turn[:, 3] = np.sin(e[:, k] / 2), np.cos(e[:, k] / 2)
-        q = retarget.qmul(turn, q)
+        q = quat.qmul(turn, q)
     return q
 
 
@@ -251,15 +242,16 @@ def fit(keys_, take):
 
 
 def turned(theta, shift, p):
+    """p turned by theta about the up axis and moved by shift."""
     c, s = np.cos(theta), np.sin(theta)
     return np.array([c * p[0] + s * p[2], p[1], -s * p[0] + c * p[2]]) + shift
 
 
 def join(target, found, joints, frames, times, k, fps):
-    """The take placed onto the keys: frames widened to a frame past each seam (times on at k model frames per scene
-    frame, fps model frames a second), the start per frame for Target.pose (the root fit next to each seam; both
-    sides: blended linearly over the gap), the frames to write (between the seams) and how far off the far seam is:
-    (metres, degrees, gap seconds, travel in metres), zeros without one."""
+    """Place the take onto the keys: (frames, times, start per frame for Target.pose, frames to write, far seam off).
+
+    k: model frames per scene frame. The far seam's offset is (metres, degrees, gap seconds, travel metres).
+    """
     before, after = found
     if before and before.seam - 1 < frames[0]:
         extra = np.arange(before.seam - 1, frames[0])
@@ -290,6 +282,7 @@ def join(target, found, joints, frames, times, k, fps):
 
 
 def note(off):
+    """The warning for a far seam further off than the take can blend in, else ""."""
     d, turn, seconds, travel = off
     if d <= WARN * seconds + STRIDE * travel and turn <= WARN_TURN * seconds:
         return ""
@@ -297,8 +290,7 @@ def note(off):
 
 
 def ease(target, found, frames, basis, loc, fps):
-    """At each seam the take eases into the keys: the difference in pose and in its change per frame there (between
-    the seam and the key frame past it) fades out over FADE."""
+    """Ease the take into the keys at each seam: the difference in pose and its change per frame fades over FADE."""
     for side, sign in zip(found, (1, -1), strict=True):
         if side is None:
             continue
@@ -309,9 +301,9 @@ def ease(target, found, frames, basis, loc, fps):
         rots, locs = side.pose
         for name, q in rots.items():
             if name in basis:
-                a, b = (_log(retarget.qmul(q[k], retarget.qinv(basis[name][i]))) for k, i in ((1, at), (0, out)))
-                q = retarget.qmul(_exp((a + (a - b) * d[:, None]) * w), basis[name])
-                basis[name] = retarget.continuous(q / np.linalg.norm(q, axis=1, keepdims=True))
+                a, b = (_log(quat.qmul(q[k], quat.qinv(basis[name][i]))) for k, i in ((1, at), (0, out)))
+                q = quat.qmul(_exp((a + (a - b) * d[:, None]) * w), basis[name])
+                basis[name] = quat.continuous(q / np.linalg.norm(q, axis=1, keepdims=True))
         root = target.map[0]
         if loc is not None and root in locs:
             a, b = locs[root][1] - loc[at], locs[root][0] - loc[out]
@@ -332,15 +324,13 @@ def _exp(v):
 
 
 def rigs():
-    """The file's rigs whose takes join their keys, read without creating settings on rigs that have none."""
+    """The file's rigs whose takes join their keys."""
     return [o for o in engine.rigs() if any(b.anchor_key.strip("|") for b in blocks.settings(o).blocks)]
 
 
 def check(obj):
-    """After the keys may have changed (timer): blocks whose keys changed since last seen get dirty, and with Auto a
-    take in its own undo step. Right after a load, undo or redo it only notes what is there, so an undo never makes
-    a take."""
-    m, s, uid = engine.loaded(), blocks.settings(obj), obj.session_uid
+    """Mark blocks dirty whose keys changed since last seen. After a load, undo or redo it only notes what is there."""
+    m, s, uid = model.loaded(), blocks.settings(obj), obj.session_uid
     now = block_keys(s, plan(obj, m)) if m and s else {}
     seen, _s.seen[uid] = _s.seen.get(uid), now
     if seen is None or now == seen:
@@ -353,15 +343,11 @@ def check(obj):
 def _on_depsgraph(_scene, depsgraph):
     if any(isinstance(u.id, bpy.types.Action) for u in depsgraph.updates):
         for obj in rigs():
-            _s.due[obj.session_uid] = time.perf_counter() + DEBOUNCE
-        if _s.due and not bpy.app.timers.is_registered(_tick):
-            bpy.app.timers.register(_tick, first_interval=DEBOUNCE)
+            engine.schedule(_s.due, obj.session_uid, DEBOUNCE, _tick)
 
 
 def _tick():
-    now = time.perf_counter()
-    for uid in [u for u, t in _s.due.items() if t <= now]:
-        del _s.due[uid]
+    for uid in engine.pop_ready(_s.due):
         obj = engine.by_uid(uid)
         if obj is not None and obj.type == "ARMATURE":
             check(obj)
@@ -370,11 +356,7 @@ def _tick():
 
 def sync():
     """The depsgraph handler is there only while a rig in the file joins its keys."""
-    handlers, want = bpy.app.handlers.depsgraph_update_post, bool(rigs())
-    if want and _on_depsgraph not in handlers:
-        handlers.append(_on_depsgraph)
-    elif not want and _on_depsgraph in handlers:
-        handlers.remove(_on_depsgraph)
+    engine.watch_depsgraph(_on_depsgraph, bool(rigs()))
 
 
 def on_file():
@@ -385,8 +367,6 @@ def on_file():
 
 def unregister():
     global _s
-    if _on_depsgraph in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph)
-    if bpy.app.timers.is_registered(_tick):
-        bpy.app.timers.unregister(_tick)
+    engine.watch_depsgraph(_on_depsgraph, False)
+    engine.stop_timer(_tick)
     _s = _State()

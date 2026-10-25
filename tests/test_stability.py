@@ -34,27 +34,29 @@ def test_enable_disable_20_times_also_mid_take():
             obj = bpy.context.active_object
             obj.sprongmotion.variants = 2
             sys.modules[PKG + ".blocks"].add(obj, "a person walks forward", 2)
-            sys.modules[PKG + ".engine"]._s.due[obj.session_uid] = 0
+            sys.modules[PKG + ".engine"]._state.due[obj.session_uid] = 0
             sys.modules[PKG + ".engine"]._tick()
             assert sys.modules[PKG + ".engine"].busy()
-        eng, ln = sys.modules[PKG + ".engine"], sys.modules[PKG + ".lane"]
+        eng, drawing = sys.modules[PKG + ".engine"], sys.modules[PKG + ".lane_draw"]
+        loader = sys.modules[PKG + ".model"]
         addon_utils.disable(PKG, handle_error=errors.append)
         assert not leftovers(), leftovers()
-        assert eng._s.model is None and eng._s.job is None and not bpy.app.timers.is_registered(eng._tick)
-        assert ln._s.handle is None
+        assert loader._state.model is None and eng._state.job is None and not bpy.app.timers.is_registered(eng._tick)
+        assert drawing._handle is None
         addon_utils.enable(PKG, default_set=True, handle_error=errors.append)
         assert mod is not None
     assert not errors, errors
-    assert sys.modules[PKG + ".engine"].model() is not None
+    assert sys.modules[PKG + ".model"].load() is not None
 
 
 def test_a_failing_draw_reports_once(capsys=None):
     ln, bl = sys.modules[PKG + ".lane"], sys.modules[PKG + ".blocks"]
+    drawing = sys.modules[PKG + ".lane_draw"]
     armature, bl.armature = bl.armature, lambda context: 1 / 0
     try:
-        ln.draw()
+        drawing.draw()
         assert ln._s.failed
-        ln.draw()
+        drawing.draw()
     finally:
         bl.armature = armature
     bpy.ops.wm.read_homefile(use_empty=True)
@@ -89,7 +91,7 @@ class Counter:
         self.alloc = C.CFUNCTYPE(C.c_void_p, C.c_void_p, C.c_size_t, C.c_size_t)(alloc)
         self.free = C.CFUNCTYPE(None, C.c_void_p, C.c_void_p)(free)
 
-        threads = sys.modules[PKG + ".engine"].THREADS
+        threads = sys.modules[PKG + ".model"].THREADS
         self.hooks = sm.Hooks(threads, C.cast(self.alloc, C.c_void_p).value, C.cast(self.free, C.c_void_p).value)
 
 
@@ -104,8 +106,8 @@ def cycle(m, seed):
 
 def test_300_cycles_leak_nothing():
     count = Counter()
-    eng = sys.modules[PKG + ".engine"]
-    m = sm.Model(eng._s.lib, eng._s.paths[1], C.byref(count.hooks))
+    loader = sys.modules[PKG + ".model"]
+    m = sm.Model(loader._state.lib, loader._state.paths[1], C.byref(count.hooks))
     try:
         cycle(m, 0)
         live, rss = count.live, rss_mb()

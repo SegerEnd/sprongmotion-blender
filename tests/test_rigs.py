@@ -1,7 +1,7 @@
 import bpy
 import numpy as np
 import rigs
-from bl_ext.smtest.sprongmotion import blocks, engine, retarget, rig
+from bl_ext.smtest.sprongmotion import blocks, engine, quat, retarget, rig, takes, timeline
 from mathutils import Matrix, Quaternion, Vector
 from test_retarget import apply, fk, posed, take
 from test_takes import slide
@@ -37,7 +37,7 @@ def check(name):
     off = {}  # the neck and feet keep the rig's standing rest: a fixed angle off the model's level rest line
     for b, j in target.joint_of.items():
         rest, model = target._dirs(b, j)
-        turned = retarget.qrot(target.align[b], rest)
+        turned = quat.qrot(target.align[b], rest)
         cos = turned.dot(model) / np.linalg.norm(turned) / np.linalg.norm(model)
         off[j] = np.degrees(np.arccos(np.clip(cos, -1, 1)))
     for f in range(0, len(rot), 8):
@@ -67,9 +67,9 @@ def legs_hold(obj, target):
     for lock in (False, True):
         s.foot_lock = lock
         engine.run_now(obj)
-        with engine.timeline(obj) as (motion, segs):
+        with timeline.whole(obj) as (motion, segs):
             contacts = motion.contacts()
-        frames, times = engine.timing(segs)
+        frames, times = takes.timing(segs)
         planted = contacts[np.round(times).astype(int).clip(0, len(contacts) - 1), 0]
         pos = []
         for f in frames:

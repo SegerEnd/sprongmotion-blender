@@ -6,11 +6,13 @@ from bpy_extras import anim_utils
 from mathutils import Matrix
 
 from . import keys
-from .rig import CHILD, JOINTS, LEGS, PARENTS, bone_map, rest_joints
+from .rig import ARMS, CHILD, JOINTS, LEGS, PARENTS, bone_map, rest_joints
 
 # Standing pitch (degrees above the floor) of the neck->head and ankle->ball lines: the median over 35k standing
 # frames of the training clips. A rig at rest stands so; the model's rest skeleton (and the own rig) has them level.
 STANDING = {12: 66.8, 7: -22.9, 8: -22.9}
+FLOOR = {7: 0.04, 8: 0.04, 20: 0.02, 21: 0.02}  # the lowest an ankle or wrist goes above the floor (model metres)
+ENDS = (7, 8, 10, 11, 20, 21)  # ankles, toes, wrists: kept above the floor by IK and the foot's turn, not the lift
 
 
 def qmul(a, b):
@@ -112,6 +114,7 @@ class Target:
         self.src = rest_joints(offsets)
         self.ends = {j: self._end(j) for j in self.joint_of.values()}
         self.align = {b: self._align(b, j) for b, j in self.joint_of.items()}
+        self.low = self._floor()
         self.ratio = self._height() / self.src[0, 1]
 
     def _head(self, j):
@@ -157,9 +160,11 @@ class Target:
     def _height(self):
         if 0 not in self.map:
             return self.src[0, 1]
-        up = self.axes[:, 1]
-        low = min(np.array(p) @ up for b in self.arm.bones for p in (b.head_local, b.tail_local))
-        return self._head(0) @ up - low
+        return self._head(0) @ self.axes[:, 1] - self._floor()
+
+    def _floor(self):
+        """The rig's floor height at rest: its lowest bone end."""
+        return min(np.array(p) @ self.axes[:, 1] for b in self.arm.bones for p in (b.head_local, b.tail_local))
 
     def _world(self, rot, root):
         """World rotation per mapped joint. A bone that stands for several joints aims at its end joint: a short spine
@@ -174,9 +179,11 @@ class Target:
                 out[j] = qmul(arc(qrot(g[:, base], self.src[k] - self.src[j]), p[:, k] - p[:, j]), g[:, base])
         return {j: qmul(qmul(self.q, r), qinv(self.q)) for j, r in out.items()}
 
-    def pose(self, rot, root, planted=None, start=None):
+    def pose(self, rot, root, planted=None, start=None, hands=None, floor=False):
         """rot [F, 22, 4] and root [F, 3] in the model's frame -> ({bone: [F, 4] basis}, pelvis location [F, 3]).
-        planted: [F, 2] left/right foot on the ground, held there by leg IK. start: (offset, yaw) to begin from."""
+        planted: [F, 2] left/right foot on the ground, held there by leg IK. start: (offset, yaw) to begin from.
+        hands: [F, 2] left/right hand on the floor, held there at the model's height above it by arm IK. floor: no
+        joint below the floor (wrists and ankles by IK, the rest by lifting the body)."""
         g = self._world(rot, root)
         absolute = {b: qmul(qmul(g[j], self.align[b]), self.rest[b]) for b, j in self.joint_of.items()}
         move = self.ratio * (root - self.src[0]) @ self.axes.T
@@ -185,6 +192,9 @@ class Target:
             absolute = {b: qmul(start[1], q) for b, q in absolute.items()}
         for side in range(2) if planted is not None else ():
             self._plant(absolute, move, planted[:, side], [self.map.get(j) for j in LEGS[side]])
+        if hands is not None or floor:
+            ground = self.low + (np.asarray(start[0]) @ self.axes[:, 1] if start is not None else 0.0)
+            move = self._ground(absolute, move, ground, rot, root, hands, floor)
         posed = self._posed(absolute, len(rot))
         basis = {}
         for name in absolute:
@@ -274,16 +284,92 @@ class Target:
         turn_thigh, turn_shin = two_bone(h, k, a, hold(a, planted, up=self.axes[:, 1]), front)
         absolute[hip], absolute[knee] = qmul(turn_thigh, absolute[hip]), qmul(turn_shin, absolute[knee])
 
+    def _ground(self, absolute, move, ground, rot, root, hands, floor):
+        """The floor steps of pose, in order: lift the body, hands onto the floor, limb ends and toe tips above it."""
+        up = self.axes[:, 1]
+        if floor:
+            move = move + self._lift(absolute, move, ground)[:, None] * up
+        if hands is not None:
+            wrist = positions(globals_(rot), root, self.offsets)[..., 1]
+            for chain, on in zip(ARMS, hands.T, strict=True):
+                at = ground + self.ratio * wrist[:, chain[2]]
+                self._reach(
+                    absolute, move, chain, lambda a, on=on, at=at: hold(a, on, at=a + (at - a @ up)[:, None] * up)
+                )
+        if floor:
+            for chain in LEGS + ARMS:
+                lo = ground + self.ratio * FLOOR[chain[2]]
+                self._reach(absolute, move, chain, lambda a, lo=lo: a + np.maximum(lo - a @ up, 0)[:, None] * up)
+            for ankle in (7, 8):
+                self._tiptoe(absolute, move, ankle, ground)
+        return move
 
-def hold(a, planted, blend=8, up=None):
+    def _reach(self, absolute, move, chain, aim):
+        """Two-bone IK of a limb (joints chain: upper, middle, end) onto aim(end heads [F, 3]) -> targets, on the
+        frames where the target moves the end. The knee or elbow keeps its bend, a little towards the front or back."""
+        names = [self.map.get(j) for j in chain]
+        if None in names:
+            return
+        upper, middle, end = names
+        only = self.deps(names)
+        heads = self.heads(self._posed(absolute, len(move), only), move, only)
+        h, k, a = heads[upper], heads[middle], heads[end]
+        t = aim(a)
+        on = np.linalg.norm(t - a, axis=1) > 1e-6
+        if not on.any():
+            return
+        fwd = qrot(qmul(absolute[upper], qinv(self.rest[upper])), self.axes[:, 2])
+        turns = two_bone(h[on], k[on], a[on], t[on], (0.1 if chain in LEGS else -0.1) * fwd[on])
+        for name, turn in zip((upper, middle), turns, strict=True):
+            q = np.array(absolute[name])
+            q[on] = qmul(turn, q[on])
+            absolute[name] = q
+
+    def _lift(self, absolute, move, ground, ease=4):
+        """[F] how far to lift the body so no joint but the limb ends is below the floor, eased over a few frames."""
+        names = [b for j, b in self.map.items() if j not in ENDS]
+        only = self.deps(names)
+        heads = self.heads(self._posed(absolute, len(move), only), move, only)
+        need = np.maximum(ground - np.min([heads[b] @ self.axes[:, 1] for b in names], 0), 0)
+        pad = np.pad(need, 2 * ease, mode="edge")
+        peak = np.max([pad[i : i + len(need) + 2 * ease] for i in range(2 * ease + 1)], 0)
+        return np.convolve(peak, np.full(2 * ease + 1, 1 / (2 * ease + 1)), "valid")
+
+    def _tiptoe(self, absolute, move, ankle, ground):
+        """A foot whose tip (toe joint, else the foot bone's tail) is below the floor turns about the ankle onto it."""
+        foot, toe = self.map.get(ankle), self.map.get(ankle + 3)
+        if foot is None:
+            return
+        only = self.deps([foot, toe] if toe else [foot])
+        posed = self._posed(absolute, len(move), only)
+        heads = self.heads(posed, move, only)
+        bone, up = self.arm.bones[foot], self.axes[:, 1]
+        tail = qrot(qmul(posed[foot], qinv(self.rest[foot])), np.array(bone.tail_local - bone.head_local))
+        v = heads[toe] - heads[foot] if toe else tail
+        drop = ground - heads[foot] @ up  # where the tip may go, from the ankle
+        on = v @ up < drop
+        if not on.any():
+            return
+        n = np.linalg.norm(v[on], axis=1)
+        h = np.maximum(drop[on], -n)
+        flat = v[on] - (v[on] @ up)[:, None] * up
+        flat /= np.linalg.norm(flat, axis=1, keepdims=True) + 1e-9
+        q = np.array(absolute[foot])
+        q[on] = qmul(arc(v[on], flat * np.sqrt(n**2 - h**2)[:, None] + h[:, None] * up), q[on])
+        absolute[foot] = q
+
+
+def hold(a, planted, blend=8, up=None, at=None):
     """Ankle targets: over each planted span the mean position; the shift fades out over a few frames (smoothstep) and
     carries across short gaps, so a target never jumps. up: only the floor position is held, the ankle keeps its own
-    height (the heel and toe roll), so the leg is not pulled straight."""
+    height (the heel and toe roll), so the leg is not pulled straight. at: the positions to hold in place of a's own."""
     f, idx = np.arange(len(a)), np.flatnonzero(planted)
+    if not len(idx):
+        return a
     held = a.copy()
     edges = np.flatnonzero(np.diff(np.r_[0, planted.astype(int), 0]))
     for s, e in zip(edges[::2], edges[1::2], strict=True):
-        held[s:e] = a[s:e].mean(0)
+        held[s:e] = (a if at is None else at)[s:e].mean(0)
     shift = np.stack([np.interp(f, idx, (held - a)[idx, i]) for i in range(3)], 1)
     if up is not None:
         shift -= (shift @ up)[:, None] * up
@@ -309,6 +395,13 @@ def two_bone(h, k, a, t, front):
     knee = h + l1[:, None] * (c * u + np.sqrt(1 - c**2) * v)
     turn_thigh = arc(k - h, knee - h)
     return turn_thigh, qmul(arc(qrot(turn_thigh, a - k), h + u * dist[:, None] - knee), turn_thigh)
+
+
+def hand_contacts(joints, fps, height=0.09, speed=0.4):
+    """[F, 2] left/right wrist on the floor in a motion (joints [F, 22, 3], metres, Y up): low and nearly still."""
+    w = joints[:, [20, 21]]
+    v = np.linalg.norm(np.diff(w[..., [0, 2]], axis=0, prepend=w[:1, :, [0, 2]]), axis=-1) * fps
+    return (w[..., 1] < height) & (v < speed)
 
 
 def _snap(v):

@@ -13,6 +13,7 @@ CHILD = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, -1, -1, 15, 16, 17, -1, 18, 19, 20, 21
 ARM = ["collar", "shoulder", "elbow", "wrist"]
 LEG = ["hip", "knee", "ankle", "foot"]
 LEGS = ((1, 4, 7), (2, 5, 8))  # hip, knee, ankle: left, right
+ARMS = ((16, 18, 20), (17, 19, 21))  # shoulder, elbow, wrist: left, right
 
 
 def _left_right(side, name):

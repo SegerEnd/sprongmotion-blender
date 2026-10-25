@@ -178,6 +178,12 @@ class SMSettings(bpy.types.PropertyGroup):
     bones: CollectionProperty(type=SMBone)
     variants: IntProperty(name="Takes", description="Takes made per block to pick from", default=1, min=1, max=8)
     foot_lock: BoolProperty(name="Foot Lock", description="Planted feet stay put", default=True, update=_reapply)
+    hand_lock: BoolProperty(
+        name="Hand Lock", description="Hands on the floor stay put, on the floor", default=True, update=_reapply
+    )
+    floor_clamp: BoolProperty(
+        name="Floor", description="No part of the body goes below the floor", default=True, update=_reapply
+    )
     key_density: EnumProperty(
         name="Keys",
         items=[

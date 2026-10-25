@@ -585,6 +585,20 @@ def _fresh_starts(s, rot, joints, spans, fps):
             joints[f0 : f0 + n] += (2 * joints[last, 0] - joints[back, 0] - joints[f0, 0]) * left
 
 
+def _contacts(s, target, frozen, joints, contacts, times):
+    """Per frame at times: the runtime's foot contacts, and the feet and hands IK holds ([F, 2] each, None when off);
+    a frozen limb keeps its own keys, so no IK on it."""
+    at = np.round(times).astype(int).clip(0, len(contacts) - 1)
+    on = contacts[at]
+    planted = on[:, [0, 2]].copy() if s.foot_lock else None  # the ankle flags: on the toes alone the ankle rolls
+    hands = retarget.hand_contacts(joints, _s.model.fps)[at] if s.hand_lock else None
+    for flags, limbs in ((planted, rig.LEGS), (hands, rig.ARMS)):
+        for side, limb in enumerate(limbs):
+            if flags is not None and frozen & {target.map.get(j) for j in limb}:
+                flags[:, side] = False
+    return on, planted, hands
+
+
 def _key(obj, rot, joints, contacts, frames, times, borders, action=None, start=True, kind=None, sides=(None, None)):
     """A decoded take onto obj's action (or action): retargeted, frozen bones left alone, the legs held by IK where
     planted, unbaked or every frame as the settings say. sides: the keys' context blocks the take joins (anchor),
@@ -600,24 +614,22 @@ def _key(obj, rot, joints, contacts, frames, times, borders, action=None, start=
         frames, times, first, keep, off = anchor.join(target, sides, joints, frames, times, k, _s.model.fps)
     else:
         first, keep = retarget.start_pose(obj, target, frames[0]) if start else None, np.ones(len(frames), bool)
-    on = contacts[np.round(times).astype(int).clip(0, len(contacts) - 1)]
     frozen = data.frozen(obj)
-    planted = on[:, [0, 2]].copy() if s.foot_lock else None  # the ankle flags: on the toes alone the ankle rolls
-    for side, leg in enumerate(rig.LEGS):
-        if planted is not None and frozen & {target.map.get(j) for j in leg}:
-            planted[:, side] = False  # a frozen leg keeps its own keys: no IK on it
+    on, planted, hands = _contacts(s, target, frozen, joints, contacts, times)
     rot, root = retarget.resample(rot, times, quat=True), retarget.resample(joints[:, 0], times)
-    basis, loc = target.pose(rot, root, planted, first)
+    basis, loc = target.pose(rot, root, planted, first, hands, s.floor_clamp)
     if start and any(sides):
         anchor.ease(target, sides, frames, basis, loc, blocks.fps())
     frames, on, basis = frames[keep], on[keep], {n: q[keep] for n, q in basis.items()}
     loc, planted = loc[keep] if loc is not None else None, planted[keep] if planted is not None else None
+    hands = hands[keep] if hands is not None else None
     marks = np.r_[frames[1:][(on[1:] != on[:-1]).any(1)], [b for b in borders if frames[0] <= b <= frames[-1]]]
     tight = {}
-    for side in range(2) if planted is not None else ():
-        for j in rig.LEGS[side] + (0,):
-            if j in target.map:
-                tight[target.map[j]] = tight.get(target.map[j], False) | planted[:, side]
+    for flags, limbs in ((planted, rig.LEGS), (hands, rig.ARMS)):
+        for side in range(2) if flags is not None else ():
+            for j in limbs[side] + (0,):
+                if j in target.map:
+                    tight[target.map[j]] = tight.get(target.map[j], False) | flags[:, side]
     basis = {name: q for name, q in basis.items() if name not in frozen}
     root_bone = target.map.get(0)
     loc = None if root_bone in frozen else loc

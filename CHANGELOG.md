@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Hand Lock: hands on the floor in the motion (push-ups, crawling) stay put and on the floor, also on rigs whose arms
+  are longer or shorter than the model's.
+- Floor: no part of the body goes below the floor. Wrists and ankles by IK, toes by turning the foot, the rest by
+  lifting the body.
+
 ## 1.0.0 (2026-10-21)
 
 First release, with the SprongMotion runtime 1.0 and the SprongMotion-14M 1.0 model bundled per platform (macOS arm64,

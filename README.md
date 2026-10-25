@@ -5,8 +5,8 @@ down"): each block's motion is made on your CPU by [SprongMotion-14M](https://hu
 retargeted onto your rig and written as keys, in a fraction of a second. No GPU, no account, nothing online.
 
 - Prompt blocks on the timeline: move, resize, split, copy and paste them; an edit makes only the blocks it touches again.
-- Any humanoid rig: Rigify, Mixamo-style and custom rigs are matched by their structure, with leg IK that keeps the feet
-  on the ground.
+- Any humanoid rig: Rigify, Mixamo-style and custom rigs are matched by their structure, with IK that keeps the feet
+  on the ground and hands on the floor, and nothing below it.
 - Takes per block (Try Again), Lock, Fresh Start, In Place, Return to Start.
 - Paths: the rig follows a curve or a Grease Pencil stroke, with block lengths fitted to it.
 - Continue from your own keys or mocap, and Fill Gap between them.

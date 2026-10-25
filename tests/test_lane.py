@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 import bpy
-from bl_ext.smtest.sprongmotion import block_text, blocks, lane, ops
+from bl_ext.smtest.sprongmotion import block_text, blocks, operators, timeline_lane
 
 
 def key(type_, unicode="", ctrl=False):
@@ -37,22 +37,22 @@ def test_add_zone_is_the_drawn_chip():
     bpy.context.scene.collection.objects.link(obj)
     obj.sprongmotion.auto = False
     s = None
-    y = sum(lane.rect()) / 2
+    y = sum(timeline_lane.rect()) / 2
     bpy.context.scene.frame_current = 5
-    x0, x1, label = lane.add_chip(_Region, s)
-    assert label == "+ Add motion" and x0 == 50 and lane.hit(_Region, s, x0 + 1, y) == ("add", -1)
+    x0, x1, label = timeline_lane.add_chip(_Region, s)
+    assert label == "+ Add motion" and x0 == 50 and timeline_lane.hit(_Region, s, x0 + 1, y) == ("add", -1)
     s = blocks.settings(obj, create=True)
     b = s.blocks.add()
     b.start, b.end = 0, 30
-    x0, x1, _ = lane.add_chip(_Region, s)
-    assert lane.hit(_Region, s, x1 + 50, y) == (None, -1), "the lane right of the chip adds nothing"
-    assert lane.hit(_Region, s, (x0 + x1) / 2, y) == ("add", -1)
-    assert lane.hit(_Region, s, 150, y) == ("body", 0)
-    assert lane.hit(_Region, s, 300, y) == ("right", 0)
+    x0, x1, _ = timeline_lane.add_chip(_Region, s)
+    assert timeline_lane.hit(_Region, s, x1 + 50, y) == (None, -1), "the lane right of the chip adds nothing"
+    assert timeline_lane.hit(_Region, s, (x0 + x1) / 2, y) == ("add", -1)
+    assert timeline_lane.hit(_Region, s, 150, y) == ("body", 0)
+    assert timeline_lane.hit(_Region, s, 300, y) == ("right", 0)
 
 
 def test_operators_exist():
-    names = {i for i, *_ in lane.KEYS} | {c.bl_idname for c in ops.CLASSES if hasattr(c, "bl_idname")}
+    names = {i for i, *_ in timeline_lane.KEYS} | {c.bl_idname for c in operators.CLASSES if hasattr(c, "bl_idname")}
     for n in names:
         group, op = n.split(".")
         assert hasattr(bpy.types, f"{group.upper()}_OT_{op}"), n
@@ -84,7 +84,7 @@ def _drag(obj, kind, frame, ctrl=False, uid=1, shift=False, f0=10.0, alt=False):
         b.start, b.end = 48 * k, 48 * k + 48
     snapshot = [(b.uid, b.start, b.end, b.locked, b.dirty, b.remake) for b in s.blocks]
     op = SimpleNamespace(kind=kind, uid=uid, shift=shift, snapshot=snapshot, f0=f0, region=_Wide)
-    lane.SM_OT_lane_click.drag(op, obj, 2 * frame, ctrl, alt)
+    timeline_lane.SM_OT_lane_click.drag(op, obj, 2 * frame, ctrl, alt)
     return [(b.start, b.end) for b in s.blocks]
 
 
@@ -136,10 +136,10 @@ def test_alt_drag_picks_a_range():
     for alt, kind in ((False, "body"), (True, "range")):
         op = SimpleNamespace(hit=lambda c, e: ("body", 0))
         event = SimpleNamespace(alt=alt, ctrl=False, shift=False, mouse_region_x=20)
-        assert lane.SM_OT_lane_click.invoke(op, context, event) == {"RUNNING_MODAL"} and op.kind == kind
-    lane.SM_OT_lane_click.drag(op, obj, 2 * 30.6)
-    assert lane._s.range == (1, 10, 31)
-    lane._s.range = None
+        assert timeline_lane.SM_OT_lane_click.invoke(op, context, event) == {"RUNNING_MODAL"} and op.kind == kind
+    timeline_lane.SM_OT_lane_click.drag(op, obj, 2 * 30.6)
+    assert timeline_lane._state.range == (1, 10, 31)
+    timeline_lane._state.range = None
 
 
 def test_an_edge_drag_ripples_the_run_and_alt_does_not():

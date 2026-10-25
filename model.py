@@ -6,7 +6,7 @@ import platform
 
 import bpy
 
-from . import assist, blocks, engine, sm
+from . import blocks, generate, runtime, typing_help
 
 THREADS = 0  # model threads, 0 = every core
 EDGE_TOKENS = 12  # tokens sm_ctx_generate_blocks adds to a block: seam 3 + look-ahead 8, a lone loop 12
@@ -47,11 +47,11 @@ def load():
     paths = (bpy.path.abspath(p.library_path) or lib, bpy.path.abspath(p.model_path) or gguf) if p else ("", "")
     if paths != _state.paths:
         unload()
-        _state.paths, _state.error = paths, _load(*paths)
+        _state.paths, _state.error = paths, _load_files(*paths)
     return _state.model
 
 
-def _load(lib_path, model_path):
+def _load_files(lib_path, model_path):
     """Load the library and model; "" when done, else why not."""
     if not lib_path:
         return "Choose the SprongMotion library (libsprongmotion) in the add-on preferences"
@@ -60,17 +60,17 @@ def _load(lib_path, model_path):
     if _state.lib and _state.lib.path != lib_path:
         return "Restart Blender to use another SprongMotion library"  # a loaded library cannot be unloaded safely
     try:
-        _state.lib = _state.lib or sm.Lib(lib_path)
-    except (OSError, AttributeError, sm.Error) as e:
+        _state.lib = _state.lib or runtime.Lib(lib_path)
+    except (OSError, AttributeError, runtime.Error) as e:
         return f"Cannot load the library {lib_path}: {e}"
     try:
-        _state.model = sm.Model(_state.lib, model_path, C.byref(sm.Hooks(THREADS)))
-    except sm.Error as e:
+        _state.model = runtime.Model(_state.lib, model_path, C.byref(runtime.Hooks(THREADS)))
+    except runtime.Error as e:
         return f"Cannot load the model {model_path}: {e}"
-    sentences = assist.lines("sentences.txt")
-    known = set(_state.model.vocab()) & set(assist.lines("words.txt"))
+    sentences = typing_help.lines("sentences.txt")
+    known = set(_state.model.vocab()) & set(typing_help.lines("words.txt"))
     long_words = {w for s in sentences for w in s.split() if len(w) > 3}
-    _state.help = assist.Help(sentences, known | long_words, _state.model.vector)
+    _state.help = typing_help.Help(sentences, known | long_words, _state.model.vector)
     return ""
 
 
@@ -88,7 +88,7 @@ def set_error(message):
 
 
 def unload():
-    engine.cancel()
+    generate.cancel()
     if _state.model:
         _state.model.free()
     _state.model, _state.paths, _state.help = None, None, None
@@ -109,7 +109,7 @@ def unknown_words(text, look=True):
     if look and text not in _state.unknown and _state.model:
         try:
             _state.unknown[text] = _state.model.unknown_words(text)
-        except sm.Error:
+        except runtime.Error:
             _state.unknown[text] = []
         for word in _state.unknown[text]:
             if word not in _state.near and _state.help:

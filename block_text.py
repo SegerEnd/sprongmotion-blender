@@ -5,7 +5,7 @@ import time
 import bpy
 from bpy.props import BoolProperty, IntProperty, StringProperty
 
-from . import assist, blocks, model, ops
+from . import block_operators, blocks, model, typing_help
 
 PAUSE = 0.3  # seconds without a key before the word list shows
 
@@ -57,7 +57,7 @@ def begin(uid, text):
 def _help_takes(event):
     """What the typing help makes of a key: (text, caret, pick, hide), or None when it is the text field's."""
     help_, (_, text, caret) = _state.help, _state.typing
-    return assist.take(assist.kind(event), text, caret, help_.ghost, help_.rows, help_.pick)
+    return typing_help.take(typing_help.kind(event), text, caret, help_.ghost, help_.rows, help_.pick)
 
 
 def typed(event, clipboard=""):
@@ -87,11 +87,11 @@ def changed():
     on = helper is not None and text != help_.quiet
     help_.sentence = helper.sentence(text, help_.sentence) if on and caret == len(text) else ""
     help_.ghost = help_.sentence[len(text) :]
-    if on and not bpy.app.timers.is_registered(_pause):
-        bpy.app.timers.register(_pause, first_interval=PAUSE)
+    if on and not bpy.app.timers.is_registered(_show_word_list):
+        bpy.app.timers.register(_show_word_list, first_interval=PAUSE)
 
 
-def _pause():
+def _show_word_list():
     help_, helper = _state.help, model.helper()
     if _state.typing is None or helper is None:
         return None
@@ -105,15 +105,15 @@ def _pause():
     return None
 
 
-def _suggest(_op, _context, text):
+def _popup_suggestions(_op, _context, text):
     """The popup's list: the sentence the ghost would show first (a text field cannot draw it), then the words."""
     helper = model.helper()
     if helper is None:
         return []
     ghost = helper.ghost(text)
     found = [text + ghost] if ghost else []
-    found += [assist.insert(text, len(text), word)[0] for word in helper.complete(text, len(text))]
-    return found[: assist.ROWS]
+    found += [typing_help.insert(text, len(text), word)[0] for word in helper.complete(text, len(text))]
+    return found[: typing_help.ROWS]
 
 
 class SM_OT_block_edit(bpy.types.Operator):
@@ -124,11 +124,11 @@ class SM_OT_block_edit(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
     index: IntProperty(default=-1, options={"SKIP_SAVE"})
     popup: BoolProperty(options={"SKIP_SAVE"})
-    text: StringProperty(name="Text", search=_suggest)
+    text: StringProperty(name="Text", search=_popup_suggestions)
 
     @classmethod
     def poll(cls, context):
-        return blocks.has_blocks(context) and ops.editable(context)
+        return blocks.has_blocks(context) and block_operators.editable(context)
 
     def block(self, context):
         obj, i = blocks.pick(context, self.index)
@@ -175,5 +175,5 @@ class SM_OT_block_edit(bpy.types.Operator):
 
 def reset():
     _state.typing = None
-    if bpy.app.timers.is_registered(_pause):
-        bpy.app.timers.unregister(_pause)
+    if bpy.app.timers.is_registered(_show_word_list):
+        bpy.app.timers.unregister(_show_word_list)

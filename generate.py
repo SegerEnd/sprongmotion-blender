@@ -10,7 +10,7 @@ from collections import namedtuple
 import bpy
 import numpy as np
 
-from . import anchor, blocks, data, model, paths, return_to_start, rig, takes, timeline
+from . import blocks, continue_keys, model, paths, return_to_start, rig, rig_data, takes, timeline_motion
 
 DEBOUNCE = 0.25  # seconds of quiet after an edit before a timed regenerate
 SYNC_BLOCKS = 3  # single-take blocks generated inside the edit itself (about 0.1 s each)
@@ -113,7 +113,7 @@ def edited(obj, wait=False, force=False):
         return
     if busy(obj):
         cancel()
-    small = r.variants == 1 and sum(timeline.needs_take(b, m.id) for b in s.blocks) <= SYNC_BLOCKS
+    small = r.variants == 1 and sum(timeline_motion.needs_take(b, m.id) for b in s.blocks) <= SYNC_BLOCKS
     if small and not wait and not busy():
         return run_now(obj)
     s.take_due = True  # the edit's undo step: its take comes in a later one (settle)
@@ -191,7 +191,7 @@ class _Job:
     def advance(self):
         """Make one unit, or at the end store the takes and key the rig. True when the job is over."""
         obj, m = by_uid(self.rig), model.load()
-        if obj is not None and (why := data.why_not_editable(obj)):
+        if obj is not None and (why := rig_data.why_not_editable(obj)):
             raise RuntimeError(why)
         s = blocks.settings(obj) if obj is not None else None
         if s is None or m is None or _action_uid(obj) != self.action:
@@ -223,14 +223,14 @@ class _Job:
         s = blocks.settings(obj)
         self.edits, self.takes, self.step, self.decoded = _state.edits.get(self.rig), {}, 0, None
         rig.ensure_map(obj)
-        self.sides = anchor.sides(obj, m)
-        self.joins = anchor.block_keys(s, self.sides)
+        self.sides = continue_keys.sides(obj, m)
+        self.joins = continue_keys.block_keys(s, self.sides)
         for b in s.blocks:
             if b.anchor_key != self.joins.get(b.uid, "|"):
                 b.dirty = True
-        self.todo = [b.uid for b in s.blocks if timeline.needs_take(b, m.id)]
-        fresh = timeline.fresh_uids(s)
-        run_of = {uid: k for k, run in enumerate(timeline.run_uids(s)) for uid in run}
+        self.todo = [b.uid for b in s.blocks if timeline_motion.needs_take(b, m.id)]
+        fresh = timeline_motion.fresh_uids(s)
+        run_of = {uid: k for k, run in enumerate(timeline_motion.run_uids(s)) for uid in run}
         first_takes = []
         for uid in self.todo:
             if self.per_block or not first_takes or uid in fresh or run_of[uid] != run_of[first_takes[-1][0][-1]]:
@@ -243,31 +243,31 @@ class _Job:
     def take(self, obj, m, make, variant):
         """Make the blocks in make; a later block goes in as a short stand-in, so the edges match one whole call."""
         s = blocks.settings(obj)
-        firsts, line = {uid: t[0] for uid, t in self.takes.items()}, timeline.uids(s)
+        firsts, line = {uid: t[0] for uid, t in self.takes.items()}, timeline_motion.uids(s)
         later = {b.uid for b in s.blocks if b.uid in self.todo and b.uid not in firsts and b.uid not in make}
-        run = next(r for r in timeline.run_uids(s) if make[0] in r)
+        run = next(r for r in timeline_motion.run_uids(s) if make[0] in r)
         segs = []
         for b in s.blocks:
             if b.uid not in run:
                 continue
-            if b.uid in make or b.uid in firsts or (b.uid not in self.todo and timeline.has_take(b, m)):
-                segs.append((b, timeline.MAKE if b.uid in make else timeline.KEEP))
-            elif b.uid in later and ((segs and segs[-1][1] == timeline.MAKE) or (s.loop and b.uid == line[-1])):
-                segs.append((b, timeline.STUB))
-        if make[0] in timeline.fresh_uids(s):
+            if b.uid in make or b.uid in firsts or (b.uid not in self.todo and timeline_motion.has_take(b, m)):
+                segs.append((b, timeline_motion.MAKE if b.uid in make else timeline_motion.KEEP))
+            elif b.uid in later and ((segs and segs[-1][1] == timeline_motion.MAKE) or (s.loop and b.uid == line[-1])):
+                segs.append((b, timeline_motion.STUB))
+        if make[0] in timeline_motion.fresh_uids(s):
             segs = segs[[b.uid for b, _ in segs].index(make[0]) :]
         whole = obj.sprongmotion.variants == 1 and [b.uid for b, _ in segs] == line
         whole = whole and not any(return_to_start.walks_back(s, b) for b in s.blocks)
-        segs = timeline.with_sides(segs, self.sides, line)
-        with timeline.run_blocks(m, obj, segs, variant, firsts) as (motion, first):
+        segs = timeline_motion.with_sides(segs, self.sides, line)
+        with timeline_motion.run_blocks(m, obj, segs, variant, firsts) as (motion, first):
             codes = motion.codes()
             if whole:
-                spans = timeline.block_spans(segs, first)
-                self.decoded = (*timeline.without_travel(s, timeline.arrays(motion), spans), spans)
+                spans = timeline_motion.block_spans(segs, first)
+                self.decoded = (*timeline_motion.without_travel(s, timeline_motion.arrays(motion), spans), spans)
             else:
                 self.decoded = None
         for (b, kind), f0, f1 in zip(segs, first, first[1:], strict=False):
-            if kind == timeline.MAKE:
+            if kind == timeline_motion.MAKE:
                 self.takes.setdefault(b.uid, []).append(codes[f0 // m.fpt : f1 // m.fpt])
 
 
@@ -297,7 +297,7 @@ def _waits_for_take():
         return m
     for obj in rigs():
         s = blocks.settings(obj)
-        if s.take_due and any(timeline.needs_take(b, m.id) for b in s.blocks):
+        if s.take_due and any(timeline_motion.needs_take(b, m.id) for b in s.blocks):
             return True
     return False
 

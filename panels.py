@@ -3,7 +3,7 @@ import traceback
 
 import bpy
 
-from . import anchor, blocks, data, engine, model, return_to_start, rig, timeline
+from . import blocks, continue_keys, generate, model, return_to_start, rig, rig_data, timeline_motion
 
 SPACES = ("DOPESHEET_EDITOR",)  # next to the blocks; the 3D view only points there
 _matches = {}
@@ -29,7 +29,7 @@ def draw_main(layout, context):
         layout.label(text="Select an armature, or add one:", icon="INFO")
         layout.operator("sm.add_rig", icon="OUTLINER_OB_ARMATURE", text="Add SprongMotion Rig")
         return
-    if why := data.why_not_editable(obj):
+    if why := rig_data.why_not_editable(obj):
         layout.label(text=why, icon="LIBRARY_DATA_DIRECT")
         return
     r, s = obj.sprongmotion, blocks.settings(obj)
@@ -62,12 +62,12 @@ def _wrapped(layout, text, icon):
 
 def _draw_joins(box, obj, b):
     """Continue from Keys on the timeline's first and last block, and why it does not apply when it cannot."""
-    line = timeline.uids(blocks.settings(obj))
+    line = timeline_motion.uids(blocks.settings(obj))
     if b.uid not in line[:1] + line[-1:]:
         return
     row = box.row()
     row.prop(b, "continues")
-    why = anchor.why_not(obj, model.loaded())
+    why = continue_keys.why_not(obj, model.loaded())
     row.active = why is None
     before, _, after = b.anchor_key.partition("|")
     if b.continues and why:
@@ -111,7 +111,9 @@ def _draw_active(layout, obj, b):
         _wrapped(box, why, "INFO")
     row = box.row()
     row.prop(b, "fresh")
-    row.active = not b.fresh or b.uid in timeline.blend_uids(blocks.settings(obj))  # grey: a run's first block, or Loop
+    row.active = not b.fresh or b.uid in timeline_motion.blend_uids(
+        blocks.settings(obj)
+    )  # grey: a run's first block, or Loop
     row = box.row(align=True)
     row.operator("sm.block_regenerate", icon="FILE_REFRESH")
     row.operator("sm.block_split", text="Split", icon="CENTER_ONLY")
@@ -122,7 +124,7 @@ def _draw_frozen(layout, context):
     row.enabled = context.mode == "POSE"
     row.operator("sm.freeze", text="Freeze", icon="FREEZE")
     row.operator("sm.freeze", text="Unfreeze", icon="LIGHT_SUN").unfreeze = True
-    frozen = sorted(data.frozen(context.active_object))
+    frozen = sorted(rig_data.frozen(context.active_object))
     if frozen:
         box = layout.box().column(align=True)
         _wrapped(box, "Frozen: " + ", ".join(frozen), "FREEZE")
@@ -134,8 +136,8 @@ def _draw_generate(layout, obj, r, s):
     col = layout.column(align=True)
     row = col.row(align=True)
     row.prop(r, "auto", toggle=True, icon="AUTO")
-    if engine.busy(obj):
-        run = engine.progress()
+    if generate.busy(obj):
+        run = generate.progress()
         row.operator("sm.cancel", text=f"Cancel {run.done}/{run.total}" if run else "Cancel", icon="CANCEL")
     elif not r.auto:
         row.operator("sm.generate", icon="PLAY")

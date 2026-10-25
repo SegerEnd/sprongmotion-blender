@@ -7,7 +7,7 @@ from collections import namedtuple
 
 import numpy as np
 
-from . import anchor, blocks, model, paths, quat, return_to_start, takes
+from . import blocks, continue_keys, model, paths, quat, return_to_start, takes
 
 KEEP, MAKE, STUB = range(3)  # a block's codes kept, made, or made as a short stand-in whose take is not used
 Part = namedtuple("Part", "uid text seed codes frames")  # a stretch of a block in a call: kept codes or frames to make
@@ -52,7 +52,7 @@ def needs_take(b, model_id):
 
 
 def with_sides(segs, sides, line):
-    """segs with the keys' context blocks (anchor.Side) before the timeline's first block and after its last."""
+    """segs with the keys' context blocks (continue_keys.Side) before the timeline's first block and after its last."""
     before, after = sides
     head = [(before, KEEP)] if before and segs and segs[0][0].uid == line[0] else []
     ends_timeline = segs and segs[-1][1] != STUB and segs[-1][0].uid == line[-1]
@@ -165,7 +165,7 @@ def remake_range(obj, index, f0, f1):
     run = next(r for r in run_uids(s) if b.uid in r)
     segs = [seg for x in line if x.uid in run for seg in (parts if x.uid == b.uid else [(x, KEEP)])]
     segs = segs[run.index(b.uid) :] if b.uid in fresh_uids(s) else segs
-    segs = with_sides(segs, anchor.sides(obj, m), [x.uid for x in line])
+    segs = with_sides(segs, continue_keys.sides(obj, m), [x.uid for x in line])
     with run_blocks(m, obj, segs) as (motion, first):
         at = first[next(i for i, (_, kind) in enumerate(segs) if kind == MAKE)] // m.fpt
         made = motion.codes()[at : at + k1 - k0]
@@ -183,7 +183,7 @@ def whole(obj, path=True, sides=True, in_place=False):
     if not segs:
         yield None, []
         return
-    segs = with_sides(segs, anchor.sides(obj, m), uids(s)) if sides else segs
+    segs = with_sides(segs, continue_keys.sides(obj, m), uids(s)) if sides else segs
     with run_blocks(m, obj, segs, path=path, in_place=in_place) as (motion, first):
         pairs = zip(segs, first, first[1:], strict=False)
         yield motion, [(b, f0, f1) for (b, _), f0, f1 in pairs if b.uid >= 0]
@@ -192,7 +192,7 @@ def whole(obj, path=True, sides=True, in_place=False):
 def decode(obj, fits=None):
     """(rotations, joints, contacts, speed, spans) of the timeline decoded run by run, or None without a take."""
     m, s = model.loaded(), blocks.settings(obj)
-    sides, line, decoded, spans, at = anchor.sides(obj, m), uids(s), [], [], 0
+    sides, line, decoded, spans, at = continue_keys.sides(obj, m), uids(s), [], [], 0
     for run in run_uids(s):
         segs = [(b, KEEP) for b in s.blocks if b.uid in run and has_take(b, m)]
         if not segs:

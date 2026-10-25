@@ -34,13 +34,13 @@ def target(scale=1.0, drop=()):
     t.arm, t.offsets, t.copies = type("Arm", (), {"bones": bones})(), OFFSETS, {}
     t.map = {j: n for j, n in enumerate(rig.JOINTS) if n not in drop}
     t.joint_of = {b: j for j, b in t.map.items() if rig.CHILD[j] >= 0}
-    t.order = r._topological(bones, {})
+    t.order = r._topological_order(bones, {})
     t.rest = {b.name: r.arc(np.array([0, 1.0, 0]), b.tail_local - b.head_local) for b in bones}
-    t.axes = t._axes()
+    t.axes = t._model_axes()
     t.q = _quat(t.axes)
     t.src = rig.rest_joints(OFFSETS)
-    t.ends = {j: t._end(j) for j in t.joint_of.values()}
-    t.align = {b: r.arc(*t._dirs(b, j)) for b, j in t.joint_of.items()}
+    t.ends = {j: t._aim_joint(j) for j in t.joint_of.values()}
+    t.align = {b: r.arc(*t._rest_directions(b, j)) for b, j in t.joint_of.items()}
     t.ratio = t._height() / t.src[0, 1]
     return t
 

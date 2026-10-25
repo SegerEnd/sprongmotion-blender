@@ -3,7 +3,7 @@
 import bpy
 import numpy as np
 
-from . import anchor, blocks, data, engine, keys, model, paths, quat, retarget, rig, timeline
+from . import blocks, continue_keys, generate, keyframes, model, paths, quat, retarget, rig, rig_data, timeline_motion
 
 FRESH_SECONDS = 0.4  # a Fresh Start block blends in from the previous block's last pose
 
@@ -29,8 +29,8 @@ def timing(segs):
 
 
 def apply(obj, push, decoded=None):
-    """Key the rig from its takes. decoded: what timeline.decode returns, when the last generate call made it."""
-    decoded = decoded or timeline.decode(obj)
+    """Key the rig from its takes. decoded: what timeline_motion.decode returns, when the last generate call made it."""
+    decoded = decoded or timeline_motion.decode(obj)
     if decoded is None:
         return
     rot, joints, contacts, speed, spans = decoded
@@ -38,24 +38,24 @@ def apply(obj, push, decoded=None):
     _fresh_starts(s, rot, joints, spans, m.fps)
     segs = [(s.blocks[blocks.find(s, uid)], f0, f1) for uid, f0, f1 in spans]
     frames, times = timing(segs)
-    line, (before, after) = timeline.uids(s), anchor.sides(obj, m)
+    line, (before, after) = timeline_motion.uids(s), continue_keys.sides(obj, m)
     joined = before if spans[0][0] == line[0] else None, after if spans[-1][0] == line[-1] else None
     starts = [b.start for b, *_ in segs]
     off = write_take_keys(obj, rot, joints, contacts, frames, times, starts, sides=joined)
     for b in s.blocks:
-        note = anchor.note(off) if joined[1] and b.uid == line[-1] else ""
+        note = continue_keys.note(off) if joined[1] and b.uid == line[-1] else ""
         if b.seam_note != note:
             b.seam_note = note
-    anchor.sync()
+    continue_keys.sync()
     if s.path or any(b.path_note for b in s.blocks):
         paths.noted(obj, speed, spans)
     if push:
-        engine.undo_push("SprongMotion take")
+        generate.undo_push("SprongMotion take")
 
 
 def _fresh_starts(s, rot, joints, spans, fps):
     """A Fresh Start block starts on from the previous block's last pose and speed; the difference fades out."""
-    fresh = timeline.blend_uids(s)
+    fresh = timeline_motion.blend_uids(s)
     for uid, f0, f1 in spans:
         if uid not in fresh or f0 <= 0:
             continue
@@ -97,7 +97,7 @@ def _held_bones(target, planted, hands):
     return held
 
 
-def _kept(values, keep):
+def _keep_frames(values, keep):
     return values[keep] if values is not None else None
 
 
@@ -112,18 +112,20 @@ def write_take_keys(obj, rot, joints, contacts, frames, times, borders, action=N
     off = (0.0,) * 4
     joins_keys = start and any(sides)
     if joins_keys:
-        frames, times, first, keep, off = anchor.join(target, sides, joints, frames, times, m.fps / blocks.fps(), m.fps)
+        frames, times, first, keep, off = continue_keys.join(
+            target, sides, joints, frames, times, m.fps / blocks.fps(), m.fps
+        )
     else:
         first = retarget.start_pose(obj, target, frames[0]) if start else None
         keep = np.ones(len(frames), bool)
-    frozen = data.frozen(obj)
+    frozen = rig_data.frozen(obj)
     on, planted, hands = _contacts(s, target, frozen, joints, contacts, times)
     rot, root = retarget.resample(rot, times, quat=True), retarget.resample(joints[:, 0], times)
     basis, loc = target.pose(rot, root, planted, first, hands, s.floor_clamp)
     if joins_keys:
-        anchor.ease(target, sides, frames, basis, loc, blocks.fps())
+        continue_keys.ease(target, sides, frames, basis, loc, blocks.fps())
     frames, on, basis = frames[keep], on[keep], {name: q[keep] for name, q in basis.items()}
-    loc, planted, hands = _kept(loc, keep), _kept(planted, keep), _kept(hands, keep)
+    loc, planted, hands = _keep_frames(loc, keep), _keep_frames(planted, keep), _keep_frames(hands, keep)
     contact_changes = frames[1:][(on[1:] != on[:-1]).any(1)]
     marks = np.r_[contact_changes, [b for b in borders if frames[0] <= b <= frames[-1]]]
     held = _held_bones(target, planted, hands)
@@ -143,7 +145,7 @@ def write_take_keys(obj, rot, joints, contacts, frames, times, borders, action=N
 def _ease_to_rest(obj, target, settings, frames, basis, loc, marks, held):
     """Where nothing follows a stretch of the take: the bones ease to rest (or hold the pose in a gap)."""
     root_bone = target.map.get(0)
-    own = anchor.own_frames(obj, set(basis) | {root_bone})
+    own = continue_keys.own_frames(obj, set(basis) | {root_bone})
     p = model.prefs()
     n = max(1, round((p.ease_seconds if p else 0.4) * blocks.fps()))
     up = quat.qrot(quat.qinv(target.rest[root_bone]), target.axes[:, 1]) if loc is not None else None
@@ -164,15 +166,18 @@ def block_actions(obj, names=None, asset=False):
     named = zip(blocks.timeline_blocks(s), names or action_names(s), strict=False)
     path_parts = paths.parts(obj) if not s.in_place else {}
     for b, name in named:
-        if not timeline.has_take(b, m):
+        if not timeline_motion.has_take(b, m):
             continue
         path = not b.in_place and path_parts.get(b.uid, False)
-        with timeline.run_blocks(m, obj, [(b, timeline.KEEP)], path=path, in_place=b.in_place) as (motion, first):
+        with timeline_motion.run_blocks(m, obj, [(b, timeline_motion.KEEP)], path=path, in_place=b.in_place) as (
+            motion,
+            first,
+        ):
             rot, joints, contacts = motion.rotations(), motion.joints(), motion.contacts()
         frames = np.arange(1, b.end - b.start + 2)
         times = (frames - 1) / (frames[-1] - 1) * (first[1] - 1)
         action = bpy.data.actions.new(name)
-        write_take_keys(obj, rot, joints, contacts, frames, times, [], action, start=False, kind=keys.KEYFRAME)
+        write_take_keys(obj, rot, joints, contacts, frames, times, [], action, start=False, kind=keyframes.KEYFRAME)
         action.frame_range, action.use_frame_range, action.use_cyclic = (1, frames[-1]), True, s.loop
         action.use_fake_user = True  # unassigned until a rig plays it: kept on save
         if asset:

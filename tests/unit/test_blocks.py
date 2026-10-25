@@ -1,7 +1,7 @@
 import types
 
 import pytest
-from sprongmotion import blocks, engine
+from sprongmotion import blocks, generate
 
 
 class Blocks(list):
@@ -21,7 +21,7 @@ class Blocks(list):
 @pytest.fixture
 def obj(monkeypatch):
     monkeypatch.setattr(blocks, "fps", lambda scene=None: 30.0)
-    monkeypatch.setattr(engine, "edited", lambda *a, **k: None)
+    monkeypatch.setattr(generate, "edited", lambda *a, **k: None)
     scene = types.SimpleNamespace(frame_current=10)
     monkeypatch.setattr(blocks.bpy, "context", types.SimpleNamespace(scene=scene), raising=False)
     s = types.SimpleNamespace(blocks=Blocks(), next_uid=1, active=0, path=None, loop=False)

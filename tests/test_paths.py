@@ -3,11 +3,11 @@ import time
 import addon_utils
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, model, paths, timeline
+from bl_ext.smtest.sprongmotion import blocks, generate, model, paths, timeline_motion
 from test_cleanup import PKG, add_on_props
 
 WALK = "a person walks forward"
-_push = engine.undo_push
+_push = generate.undo_push
 
 
 def rig(*texts):
@@ -19,7 +19,7 @@ def rig(*texts):
     s.auto, s.key_density = False, "EXACT"
     for text, seconds in texts:
         blocks.add(obj, text, seconds).seed = 5
-    engine.run_now(obj)
+    generate.run_now(obj)
     s.auto = True
     return obj
 
@@ -36,7 +36,7 @@ def lengths(obj):
 
 def moving(obj):
     """Per block: whether its own motion travels, as the fit sees it (only those get a new length)."""
-    *_, speed, spans = timeline.decode(obj)
+    *_, speed, spans = timeline_motion.decode(obj)
     return [gait > 0 for _, gait in paths.gaits([(f0, f1) for _, f0, f1 in spans], speed, model.load().fps)]
 
 
@@ -49,13 +49,13 @@ def watch():
         made.append(sum(k is None for k in keep))
         return run(texts, seconds, seeds, keep, *a)
 
-    m.blocks, engine.undo_push = counted, out.append
+    m.blocks, generate.undo_push = counted, out.append
     return made, out
 
 
 def unwatch():
     vars(model.load()).pop("blocks", None)
-    engine.undo_push = _push
+    generate.undo_push = _push
 
 
 def pelvis_xy(obj, frames):

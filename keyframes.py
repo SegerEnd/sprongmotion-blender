@@ -48,7 +48,7 @@ def extremes(y, size, width=5):
     return out
 
 
-def _refine(keys, error):
+def _add_worst_frames(keys, error):
     """Add the worst frame of every span still off by more than 1 (error is normalised by its limit) until none is."""
     keys, cols = keys.copy(), np.arange(keys.shape[1])
     while len(cols):
@@ -82,10 +82,10 @@ def unbake(x, groups, marks, shared=False):
             e = fit(x, y, m, np.repeat(k, y.shape[1], 1))
             return np.max([fn(e[:, s], y[:, s]) / lim[:, 0] for fn, s, lim in parts], 0)
 
-        k = np.flatnonzero(_refine(seeds, lambda k, _: worst(k)[:, None])[:, 0])
+        k = np.flatnonzero(_add_worst_frames(seeds, lambda k, _: worst(k)[:, None])[:, 0])
         return [[k] * g[0].shape[1] for g in groups], [m[:, s] for s in spans]
     half = np.concatenate([np.repeat(lim, s.stop - s.start, 1) / 2 for _, s, lim in parts], 1)
-    keys = _refine(
+    keys = _add_worst_frames(
         seeds | extremes(y, half.max(0)), lambda k, c: np.abs(fit(x, y[:, c], m[:, c], k) - y[:, c]) / half[:, c]
     )
     while True:  # a keyed frame cannot get closer: only frames between keys are looked at
@@ -99,6 +99,11 @@ def unbake(x, groups, marks, shared=False):
             break
         keys = keys | add
     return [[np.flatnonzero(keys[:, c]) for c in range(s.start, s.stop)] for s in spans], [m[:, s] for s in spans]
+
+
+def bone_name(fc):
+    """The bone an F-curve animates, None for other channels."""
+    return fc.data_path.split('"')[1] if fc.data_path.startswith('pose.bones["') else None
 
 
 def get(kp):

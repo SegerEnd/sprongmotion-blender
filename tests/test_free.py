@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import bpy
 import numpy as np
 import undos
-from bl_ext.smtest.sprongmotion import blocks, engine, lane, model, timeline
+from bl_ext.smtest.sprongmotion import blocks, generate, model, timeline_lane, timeline_motion
 from test_copy import counting
 from test_rest import ease_frames, pose, prefs, rest
 
@@ -30,7 +30,7 @@ def setup(gaps=(0, 0), auto=False):
         b.seed = k + 1
         if k:
             blocks.shift(blocks.settings(obj), [k], gaps[k - 1])
-    engine.run_now(obj)
+    generate.run_now(obj)
     return obj
 
 
@@ -46,8 +46,8 @@ def drag(obj, uid, frames, shift=False):
     f0 = (b.start + b.end) / 2
     op = SimpleNamespace(kind="body", uid=uid, shift=shift, snapshot=snapshot, f0=f0, region=_Region,
                          before=blocks.continues(s))  # fmt: skip
-    lane.SM_OT_lane_click.drag(op, obj, 2 * (f0 + frames))
-    lane.SM_OT_lane_click.done(op, obj)
+    timeline_lane.SM_OT_lane_click.drag(op, obj, 2 * (f0 + frames))
+    timeline_lane.SM_OT_lane_click.done(op, obj)
 
 
 def alone(text, seed, frames):
@@ -58,7 +58,7 @@ def alone(text, seed, frames):
     other.sprongmotion.auto = False
     b = blocks.add(other, text, frames / blocks.fps())
     b.seed = seed
-    engine.run_now(other)
+    generate.run_now(other)
     made = blocks.codes(b, model.load().id).tolist()
     bpy.data.objects.remove(other)
     bpy.context.view_layer.objects.active = keep
@@ -70,7 +70,7 @@ def test_a_gap_starts_a_new_run():
     s = blocks.settings(obj)
     before = codes(obj)
     drag(obj, 3, 24)
-    engine.run_now(obj)
+    generate.run_now(obj)
     a, b, c = s.blocks
     assert c.start - b.end == 24 and [len(r) for r in blocks.runs(s)] == [2, 1]
     after = codes(obj)
@@ -152,16 +152,16 @@ def test_one_undo_step_each():
 def test_an_old_chained_file_is_unchanged():
     obj = setup()
     m, s = model.load(), blocks.settings(obj)
-    with timeline.whole(obj) as (motion, segs):
+    with timeline_motion.whole(obj) as (motion, segs):
         spans = [(b.uid, f0, f1) for b, f0, f1 in segs]
-        whole = timeline.without_travel(s, timeline.arrays(motion), spans)
-    for x, y in zip(whole, timeline.decode(obj), strict=False):
+        whole = timeline_motion.without_travel(s, timeline_motion.arrays(motion), spans)
+    for x, y in zip(whole, timeline_motion.decode(obj), strict=False):
         assert np.array_equal(x, y), "one run decodes as one motion, as before"
     path = os.path.join(tempfile.mkdtemp(), "chained.blend")
     bpy.ops.wm.save_as_mainfile(filepath=path)
     bpy.ops.wm.open_mainfile(filepath=path)
     s = blocks.settings(bpy.data.objects[undos.NAME])
-    assert not any(timeline.needs_take(b, m.id) for b in s.blocks) and timeline.fresh_uids(s) == set()
+    assert not any(timeline_motion.needs_take(b, m.id) for b in s.blocks) and timeline_motion.fresh_uids(s) == set()
 
 
 def test_duplicate_goes_right_after_and_shifts_the_touching_blocks():
@@ -176,8 +176,10 @@ def test_duplicate_goes_right_after_and_shifts_the_touching_blocks():
 
 def test_the_lane_finds_gaps_and_both_edges():
     obj = setup(gaps=(30, 0))
-    s, y = blocks.settings(obj), sum(lane.rect()) / 2
+    s, y = blocks.settings(obj), sum(timeline_lane.rect()) / 2
     a, b, c = s.blocks
-    assert lane.hit(_Region, s, 2 * (a.end + 15), y) == ("gap", 0)
-    assert lane.hit(_Region, s, 2 * a.end, y) == ("right", 0) and lane.hit(_Region, s, 2 * b.start, y) == ("left", 1)
-    assert lane.hit(_Region, s, 2 * b.end, y) == ("right", 1), "where blocks touch: the left one's end"
+    assert timeline_lane.hit(_Region, s, 2 * (a.end + 15), y) == ("gap", 0)
+    assert timeline_lane.hit(_Region, s, 2 * a.end, y) == ("right", 0) and timeline_lane.hit(
+        _Region, s, 2 * b.start, y
+    ) == ("left", 1)
+    assert timeline_lane.hit(_Region, s, 2 * b.end, y) == ("right", 1), "where blocks touch: the left one's end"

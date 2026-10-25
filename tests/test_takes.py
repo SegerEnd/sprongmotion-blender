@@ -3,19 +3,19 @@ import tempfile
 
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, takes, timeline
+from bl_ext.smtest.sprongmotion import blocks, generate, takes, timeline_motion
 from test_generate import all_codes, codes, curve, setup
 
 
 def test_variants_bvh_bake():
     obj = setup()
     obj.sprongmotion.variants = 3
-    engine.run_now(obj)
+    generate.run_now(obj)
     b = blocks.settings(obj).blocks[0]
     assert b.variants == 3 and not (codes(b, 0) == codes(b, 1)).all()
     later, keys = all_codes(obj)[1], [k.co.y for k in curve(obj).keyframe_points]
     b.variant = 2
-    engine.run_now(obj)
+    generate.run_now(obj)
     assert not blocks.settings(obj).blocks[1].dirty and (all_codes(obj)[1] == later).all(), "the next block stays"
     assert keys != [k.co.y for k in curve(obj).keyframe_points], "the other take is on the armature"
     path = os.path.join(tempfile.mkdtemp(), "take.bvh")
@@ -31,13 +31,13 @@ def test_variants_bvh_bake():
 
 def test_foot_lock_and_in_place_come_from_the_runtime():
     obj = setup()
-    engine.run_now(obj)
+    generate.run_now(obj)
     locked = [k.co.y for k in curve(obj).keyframe_points]
     obj.sprongmotion.foot_lock = False
-    engine.run_now(obj)
+    generate.run_now(obj)
     assert locked != [k.co.y for k in curve(obj).keyframe_points]
     blocks.settings(obj).in_place = True
-    engine.run_now(obj)
+    generate.run_now(obj)
     heads = []
     for f in range(1, blocks.settings(obj).blocks[-1].end, 10):
         bpy.context.scene.frame_set(f)
@@ -47,7 +47,7 @@ def test_foot_lock_and_in_place_come_from_the_runtime():
 
 def ankle_track(obj, side=0):
     """Scene frames, the world ankle head per frame and the runtime's ankle contact per frame."""
-    with timeline.whole(obj) as (motion, segs):
+    with timeline_motion.whole(obj) as (motion, segs):
         contacts = motion.contacts()
     frames, times = takes.timing(segs)
     planted = contacts[np.round(times).astype(int).clip(0, len(contacts) - 1), 2 * side]
@@ -68,10 +68,10 @@ def test_planted_feet_hold_still_with_foot_lock():
     for k, b in enumerate(blocks.settings(obj).blocks):
         b.seed = 11 + k
     obj.sprongmotion.foot_lock = False
-    engine.run_now(obj)
+    generate.run_now(obj)
     loose = [slide(*ankle_track(obj, side)) for side in (0, 1)]
     obj.sprongmotion.foot_lock = True
-    engine.run_now(obj)
+    generate.run_now(obj)
     for side in (0, 1):
         pos, planted = ankle_track(obj, side)
         assert slide(pos, planted) < 0.05 < loose[side], (slide(pos, planted), loose[side])
@@ -81,7 +81,7 @@ def test_planted_feet_hold_still_with_foot_lock():
 
 def test_the_take_starts_where_the_rig_was_keyed():
     obj = setup()
-    engine.run_now(obj)
+    generate.run_now(obj)
     pelvis = obj.pose.bones["pelvis"]
     end = blocks.settings(obj).blocks[-1].end
 
@@ -100,7 +100,7 @@ def test_the_take_starts_where_the_rig_was_keyed():
     pelvis.keyframe_insert("rotation_quaternion", frame=0)
     bpy.context.scene.frame_set(0)
     keyed = np.array(obj.matrix_world @ pelvis.head)[:2]
-    engine.run_now(obj)
+    generate.run_now(obj)
     b0, b1 = path()
     assert np.linalg.norm(b0 - keyed) < np.linalg.norm(a0 - keyed) and np.linalg.norm(b0 - keyed) < 0.05
     da, db = a1 - a0, b1 - b0

@@ -5,7 +5,7 @@ import random
 
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import anchor, blocks, data, engine, model, retarget, rig
+from bl_ext.smtest.sprongmotion import blocks, continue_keys, generate, model, retarget, rig, rig_data
 
 FPS, CUT, GAP = 24, 61, (49, 73)
 MOVING = [("a person walks forward", 12), ("a person jogs forward", 3), ("a person dances", 5)]
@@ -17,7 +17,7 @@ def baked(text, seed, seconds=5.0):
     obj = bpy.context.active_object
     obj.sprongmotion.auto = False
     blocks.add(obj, text, seconds).seed = seed
-    engine.run_now(obj)
+    generate.run_now(obj)
     assert bpy.ops.sm.bake(keys="0.5") == {"FINISHED"}
     return obj
 
@@ -107,7 +107,7 @@ def continued(text, seed, on=True):
     bpy.context.scene.frame_current = CUT
     b = blocks.add(obj, text, 2.5)
     b.seed, b.continues = seed + 7, on
-    engine.run_now(obj)
+    generate.run_now(obj)
     assert not on or same(outside(own_keys(obj), CUT, 10**6), before), "the keys up to the block stay as they were"
     assert bool(b.anchor_key.strip("|")) == on
     p = world(obj, range(1, b.end + 1))
@@ -125,16 +125,21 @@ def test_continue_from_keys():
 def test_edited_keys_make_the_block_dirty():
     obj, _ = continued(*MOVING[0])
     b, m = blocks.settings(obj).blocks[0], model.load()
-    anchor.check(obj)  # notes what is there
+    continue_keys.check(obj)  # notes what is there
     assert not b.dirty
     fc = retarget.channelbag(obj).fcurves.find('pose.bones["l_elbow"].rotation_quaternion', index=1)
     next(k for k in fc.keyframe_points if k.co.x >= CUT - 10).co.y += 0.2
-    anchor.check(obj)
+    continue_keys.check(obj)
     assert b.dirty, "a key before the block changed"
-    engine.run_now(obj)
-    assert not b.dirty and b.anchor_key == anchor.block_keys(blocks.settings(obj), anchor.plan(obj, m))[b.uid]
+    generate.run_now(obj)
+    assert (
+        not b.dirty
+        and b.anchor_key == continue_keys.block_keys(blocks.settings(obj), continue_keys.plan(obj, m))[b.uid]
+    )
     obj.sprongmotion.bones[rig.JOINTS.index("l_knee")].bone = ""
-    assert anchor.why_not(obj, m) and anchor.plan(obj, m) == (None, None), "no legs mapped: off, with a message"
+    assert continue_keys.why_not(obj, m) and continue_keys.plan(obj, m) == (None, None), (
+        "no legs mapped: off, with a message"
+    )
 
 
 def test_fill_gap():
@@ -171,7 +176,7 @@ def test_fill_gap():
     assert bpy.ops.sm.remove_data(bake=True) == {"FINISHED"}
     assert "sprongmotion" not in (obj.bl_system_properties_get() or {})
     assert {k.type for fc in retarget.channelbag(obj).fcurves for k in fc.keyframe_points} == {"KEYFRAME"}
-    assert anchor._on_depsgraph not in bpy.app.handlers.depsgraph_update_post
+    assert continue_keys._on_depsgraph not in bpy.app.handlers.depsgraph_update_post
 
 
 def test_far_keys_warn():
@@ -186,12 +191,12 @@ def test_far_keys_warn():
 
 def test_a_block_added_in_a_gap_fills_it_and_frozen_bones_keep_their_keys():
     obj = baked(*MOVING[0])
-    data.freeze(obj, ["l_elbow"])
+    rig_data.freeze(obj, ["l_elbow"])
     cut(obj, *GAP)
     elbow = own_keys(obj)[('pose.bones["l_elbow"].rotation_quaternion', 0)]
     bpy.context.scene.frame_current = 60
     b = blocks.add(obj, "a person walks forward", 3)
-    engine.run_now(obj)
+    generate.run_now(obj)
     assert (b.start, b.end) == GAP and all(b.anchor_key.split("|"))
     assert own_keys(obj)[('pose.bones["l_elbow"].rotation_quaternion', 0)] == elbow
 
@@ -203,7 +208,7 @@ def test_regenerate_range():
     obj.sprongmotion.auto = False
     for text in ("a person walks forward", "a person waves"):
         blocks.add(obj, text, 3).seed = 4
-    engine.run_now(obj)
+    generate.run_now(obj)
     m, b = model.load(), blocks.settings(obj).blocks[0]
     old = blocks.codes(b, m.id).copy()
     sc = bpy.context.scene

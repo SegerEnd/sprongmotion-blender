@@ -1,6 +1,6 @@
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import keys, retarget
+from bl_ext.smtest.sprongmotion import keyframes, retarget
 
 
 def rig_with_bone():
@@ -60,7 +60,7 @@ def test_unbaked_keys_look_like_every_frame():
     kp = retarget.channelbag(obj).fcurves.find(path, index=0).keyframe_points
     assert len(kp) < 0.3 * len(t) and 120 in [k.co.x for k in kp], len(kp)
     assert {k.interpolation for k in kp} == {"BEZIER"} and {k.handle_left_type for k in kp} == {"ALIGNED"}
-    err = np.degrees(keys.angle(evaluated(obj, path, t, 4), q)).max()
+    err = np.degrees(keyframes.angle(evaluated(obj, path, t, 4), q)).max()
     assert err <= 0.5 + 1e-3, err
 
 

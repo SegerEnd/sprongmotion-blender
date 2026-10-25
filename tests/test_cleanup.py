@@ -3,7 +3,7 @@ import tempfile
 
 import addon_utils
 import bpy
-from bl_ext.smtest.sprongmotion import blocks, data, engine, model, retarget, rig
+from bl_ext.smtest.sprongmotion import blocks, generate, model, retarget, rig, rig_data
 
 PKG = "bl_ext.smtest.sprongmotion"
 UI = {"window_managers", "workspaces", "screens", "all_ids"}
@@ -40,20 +40,20 @@ def test_bake_and_remove_leave_plain_animation():
     s.auto, s.variants = False, 2
     blocks.add(obj, "a person walks forward", 2).seed = 3
     blocks.add(obj, "a person waves", 1.5).seed = 4
-    engine.run_now(obj)
+    generate.run_now(obj)
     bpy.ops.object.mode_set(mode="POSE")
     for pb in obj.pose.bones:
         pb.select = pb.name == "l_elbow"
     assert bpy.ops.sm.freeze() == {"FINISHED"}
     bpy.ops.object.mode_set(mode="OBJECT")
-    saved = os.path.join(tempfile.mkdtemp(), "with-data.blend")
+    saved = os.path.join(tempfile.mkdtemp(), "with-rig_data.blend")
     bpy.ops.wm.save_as_mainfile(filepath=saved, copy=True)
     assert add_on_props() and bpy.ops.sm.remove_data(every=True) == {"FINISHED"}
     assert not add_on_props(), add_on_props()
     after = inventory()
     assert set(after) - set(before) == {("actions", obj.animation_data.action.name)}, set(after) ^ set(before)
     assert not [k for k, users in after.items() if not users and before.get(k, 1)], "no new orphans"
-    assert not obj.data.collections.get(data.FROZEN) and {b.color.palette for b in obj.data.bones} == {"DEFAULT"}
+    assert not obj.data.collections.get(rig_data.FROZEN) and {b.color.palette for b in obj.data.bones} == {"DEFAULT"}
     kinds = {k.type for fc in retarget.channelbag(obj).fcurves for k in fc.keyframe_points}
     assert kinds == {"KEYFRAME"}, kinds
     reference = rig.build_own_rig(bpy.context, model.load().offsets, name="Reference")
@@ -87,7 +87,7 @@ def test_clear_motion_puts_the_animated_bones_back_to_rest():
     obj = bpy.context.active_object
     obj.sprongmotion.auto = False
     blocks.add(obj, "a person walks forward", 2)
-    engine.run_now(obj)
+    generate.run_now(obj)
     bpy.context.scene.frame_set(20)
     bpy.ops.object.mode_set(mode="POSE")
     for pb in obj.pose.bones:

@@ -35,17 +35,25 @@ files at once, 10), `SM_THREADS` (model threads per Blender, 2 under make), `SM_
 
 | File | Does |
 |---|---|
-| `sm.py` | ctypes binding of the runtime (`include/sm.h`) |
-| `props.py` | The data on each armature (bone map, settings) and on each action (its blocks, Loop, path), moving old files' blocks to the action |
+| `runtime.py` | ctypes binding of the runtime (`include/sm.h`) |
+| `model.py` | Loading the runtime library and the model, the add-on preferences, unknown words |
+| `properties.py` | The data on each armature (bone map, settings) and on each action (its blocks, Loop, path), moving old files' blocks to the action |
 | `blocks.py` | The block list: add, split, resize, move, place freely, runs, stored codes |
-| `engine.py` | Loading the model, making takes (at once or from a timer), putting a take on the rig, per-block actions |
-| `retarget.py` | Rest-pose maths from the model's 22 joints onto any rig, leg IK, writing the keys |
-| `keys.py` | F-curve maths: unbaked Bezier keys within a tolerance |
+| `generate.py` | Making takes, at once or from a timer, and the undo steps around them |
+| `timeline_motion.py` | Generate calls over the timeline's blocks, which blocks need a take, decoding the timeline |
+| `takes.py` | Putting a decoded take on the rig: timing, contacts, easing to rest, per-block actions |
+| `retarget.py` | Rest-pose maths from the model's 22 joints onto any rig, leg and arm IK, writing the keys |
+| `quat.py` | Quaternion maths on numpy arrays |
+| `keyframes.py` | F-curve maths: unbaked Bezier keys within a tolerance |
 | `rig.py` | The 22-joint skeleton, rig presets, matching a rig by its structure, the add-on's own rig |
-| `anchor.py` | The rig's own keys as context blocks: Continue from Keys, Fill Gap, reading a pose back to the 22 joints |
+| `continue_keys.py` | The rig's own keys as context blocks: Continue from Keys, Fill Gap, reading a pose back to the 22 joints |
 | `paths.py` | The rig's path: curve to model frame, fitting block lengths, the turn budget, re-applying after edits |
-| `data.py` | Frozen bones, linked and override checks, Remove SprongMotion Data (per action, whole file) |
-| `lane.py` | The block lane: drawing, mouse operators, typing in a block |
-| `assist.py` | Typing help: the rest of a sentence (`sentences.txt`, ours) ranked by the text encoder, word completion from the model's words (`words.txt`) |
-| `ops.py` | The other operators and the keymaps |
-| `ui.py` | The sidebar panels (Dope Sheet / Timeline, a pointer in the 3D view), menu entries |
+| `return_to_start.py` | Return to Start: the way back and its length |
+| `rig_data.py` | Frozen bones, linked and override checks, Remove SprongMotion Data (per action, whole file) |
+| `timeline_lane.py` | The block lane: hit testing and mouse operators |
+| `timeline_draw.py` | Drawing the block lane |
+| `block_text.py` | Typing a block's text in the block or in a popup |
+| `typing_help.py` | Typing help: the rest of a sentence (`sentences.txt`, ours) ranked by the text encoder, word completion from the model's words (`words.txt`) |
+| `block_operators.py` | The operators that edit blocks |
+| `operators.py` | The other operators and the keymaps |
+| `panels.py` | The sidebar panels (Dope Sheet / Timeline, a pointer in the 3D view), menu entries |

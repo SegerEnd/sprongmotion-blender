@@ -1,12 +1,12 @@
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, keys, model, retarget, takes
+from bl_ext.smtest.sprongmotion import blocks, generate, keyframes, model, retarget, takes
 from test_generate import setup
 
 
 def test_one_action_per_block():
     obj = setup()
-    engine.run_now(obj)
+    generate.run_now(obj)
     timeline = obj.animation_data.action
     spans = [(b.text, b.end - b.start + 1) for b in blocks.settings(obj).blocks]
     obj.sprongmotion.key_density = "EXACT"
@@ -22,13 +22,13 @@ def test_one_action_per_block():
             if "rotation_quaternion" in fc.data_path and not fc.array_index:
                 q = [[[c.find(fc.data_path, index=i).evaluate(f) for i in range(4)] for f in range(1, n + 1)]
                      for c in (got, want)]  # fmt: skip
-                worst = max(worst, np.degrees(keys.angle(np.array(q[0]), np.array(q[1]))).max())
+                worst = max(worst, np.degrees(keyframes.angle(np.array(q[0]), np.array(q[1]))).max())
         assert worst <= 0.51, f"{text}: {worst:.2f} degrees"
 
 
 def test_block_actions_are_named_after_their_own_blocks():
     obj = setup()
-    engine.run_now(obj)
+    generate.run_now(obj)
     s = blocks.settings(obj)
     s.blocks[1].text = ""
     sits = s.blocks[2].end - s.blocks[2].start + 1

@@ -1,6 +1,6 @@
 import bpy
 import rigs
-from bl_ext.smtest.sprongmotion import rig, ui
+from bl_ext.smtest.sprongmotion import panels, rig
 from test_rigs import build
 
 
@@ -26,7 +26,7 @@ class _Layout:
         return iter((_Layout(self.seen), None))
 
 
-def drawn(fn=ui.draw_main):
+def drawn(fn=panels.draw_main):
     layout = _Layout()
     fn(layout, bpy.context)
     return layout.seen
@@ -42,5 +42,5 @@ def test_rig_line_counts_before_any_take():
     obj = build("simple16")
     obj.sprongmotion.property_unset("bones")
     n = len(rigs.expected(rigs.RIGS["simple16"]))
-    assert ("label", f"Rig: matched {n} of {len(rig.JOINTS)}") in drawn(ui.draw_rig), "read from the rig"
+    assert ("label", f"Rig: matched {n} of {len(rig.JOINTS)}") in drawn(panels.draw_rig), "read from the rig"
     assert not len(obj.sprongmotion.bones), "drawing writes nothing"

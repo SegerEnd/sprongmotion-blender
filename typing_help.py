@@ -21,7 +21,7 @@ def lines(name):
     return [s for s in (pathlib.Path(__file__).parent / name).read_text().splitlines() if s.strip()]
 
 
-def _unit(v):
+def _unit_vectors(v):
     return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), 1e-12)
 
 
@@ -34,7 +34,7 @@ class Help:
         self.words = sorted(words)
         self.known = set(self.words)
         self.count = Counter(w for s in self.lower for w in s.split())
-        self.vectors = _unit(np.stack([encode(s) for s in sentences]))
+        self.vectors = _unit_vectors(np.stack([encode(s) for s in sentences]))
         self.cache = {}
 
     def sentence(self, text, keep=""):
@@ -47,10 +47,10 @@ class Help:
         if low not in self.cache:
             if len(self.cache) >= 512:
                 self.cache.clear()
-            self.cache[low] = self._best(text, low)
+            self.cache[low] = self._best_sentence(text, low)
         return self.cache[low]
 
-    def _best(self, text, low):
+    def _best_sentence(self, text, low):
         """The candidate going on with the word most candidates continue with, nearest to text by the encoder."""
         hits = [i for i, s in enumerate(self.lower) if len(s) > len(low) and s.startswith(low)]
         if len(hits) > 1:
@@ -58,7 +58,7 @@ class Help:
             end = Counter(ends).most_common(1)[0][0]
             hits, text = [i for i, e in zip(hits, ends, strict=True) if e == end], text + end
         if len(hits) > 1:
-            hits = [hits[int(np.argmax(self.vectors[hits] @ _unit(self.encode(text))))]]
+            hits = [hits[int(np.argmax(self.vectors[hits] @ _unit_vectors(self.encode(text))))]]
         return self.sentences[hits[0]] if hits else ""
 
     def ghost(self, text, keep=""):

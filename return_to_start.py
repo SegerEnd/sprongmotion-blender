@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from . import blocks, paths, timeline
+from . import blocks, paths, timeline_motion
 
 TURN = 2.0  # m: the least radius of the U-turn, at the model's scale like the turn budget
 AHEAD = 0.5  # m: the most it goes on straight before it turns (the body's momentum)
@@ -39,7 +39,7 @@ def way_back(p, h, goal, r):
 
 
 def _in_place_frames(segs, first, n):
-    """[n] frames of blocks in place, as timeline.without_travel drops their travel."""
+    """[n] frames of blocks in place, as timeline_motion.without_travel drops their travel."""
     still = np.zeros(n, bool)
     for (b, _), f0, f1 in zip(segs, first, first[1:], strict=False):
         still[f0:f1] = b.uid >= 0 and b.in_place
@@ -80,12 +80,12 @@ def walk_back(obj, m, segs, first, run_arrays, fits=None):
         hips, radius = joints[f0, 1] - joints[f0, 2], max(TURN, gait / np.radians(paths.YAW_BUDGET))
         back = way_back(root[f0, [0, 2]], np.arctan2(-hips[2], hips[0]), goal, radius)
         path_points = _way_back_points(root, speed, m.fps, f0, f1, back)
-        with timeline.run_blocks(m, obj, segs, path=path_points) as (motion, _):
-            new = timeline.arrays(motion)
+        with timeline_motion.run_blocks(m, obj, segs, path=path_points) as (motion, _):
+            new = timeline_motion.arrays(motion)
         _fix_ends(new, root, goal, f0, f1)
         if f1 < len(root):  # the blocks after it go on from where it ends, turned to its facing
             ends = [np.arctan2(*(j[f1 - 1, 1] - j[f1 - 1, 2])[[0, 2]]) for j in (new[1], joints)]
-            _turn(rot[f1:], joints[f1:], root[f1:], ends[0] - ends[1], root[f1 - 1], new[2][f1 - 1])
+            _turn_about_pivot(rot[f1:], joints[f1:], root[f1:], ends[0] - ends[1], root[f1 - 1], new[2][f1 - 1])
         for old, made in zip((rot, joints, root), new[:3], strict=True):
             old[f0:f1] = made[f0:f1]
         ratio = paths.length(back) / travel
@@ -104,11 +104,11 @@ def _fix_ends(new, root, goal, f0, f1):
     new[2][f0:f1] += error
 
 
-def _turn(rot, joints, root, angle, pivot, to):
+def _turn_about_pivot(rot, joints, root, angle, pivot, to):
     """Frames turned by angle about pivot, then moved by to - pivot (in place)."""
     for p in (joints, root):
         p[..., [0, 2]] -= pivot[[0, 2]]
-    timeline.turn_about_up(rot, joints, root, angle)
+    timeline_motion.turn_about_up(rot, joints, root, angle)
     for p in (joints, root):
         p[..., [0, 2]] += to[[0, 2]]
 
@@ -119,7 +119,7 @@ def refit(obj, s, m):
         return False
     again = s.path_fit != "again" + paths.blocks_key(s)  # a take of the new length has a gait of its own
     fits, changed = {}, False
-    timeline.decode(obj, fits)
+    timeline_motion.decode(obj, fits)
     for uid, sec in fits.items():
         b = s.blocks[blocks.find(s, uid)]
         if not b.locked:

@@ -9,7 +9,7 @@ import random
 import bpy
 import numpy as np
 
-from . import anchor, engine, model, paths, retarget, timeline
+from . import continue_keys, generate, model, paths, retarget, timeline_motion
 
 MIN_SECONDS, DEFAULT_SECONDS, MAX_SECONDS = 0.5, 3.0, 10.0
 TOUCH = 2  # frames: blocks this close still touch
@@ -161,7 +161,7 @@ def place(s, i, start):
     return j
 
 
-def _new(s):
+def _new_block(s):
     b = s.blocks.add()
     b.uid, s.next_uid = s.next_uid, s.next_uid + 1
     b.color = PALETTE[(b.uid - 1) % len(PALETTE)]
@@ -172,8 +172,8 @@ def _new(s):
 
 def add(obj, text, seconds=DEFAULT_SECONDS):
     s = settings(obj, create=True)
-    with engine.hold():
-        b = _new(s)
+    with generate.hold():
+        b = _new_block(s)
         i = len(s.blocks) - 1
         lo, hi = limits()
         b.start = s.blocks[i - 1].end if i else bpy.context.scene.frame_current
@@ -188,7 +188,7 @@ def snap(obj, index, frame=None):
     """A block added (or dropped at frame) in a gap between the rig's own keys fills it when the gap fits a block."""
     s, (lo, hi) = settings(obj), limits()
     b = s.blocks[index]
-    g = anchor.gap(obj, b.start if frame is None else frame)
+    g = continue_keys.gap(obj, b.start if frame is None else frame)
     if g is None:
         return
     start = g[0] if index == 0 else b.start
@@ -201,16 +201,16 @@ def fill(obj, lo, hi, text):
     """Blocks with text exactly over frames lo..hi, several if the gap is longer than one block can be."""
     s = settings(obj, create=True)
     n = max(1, math.ceil((hi - lo) / limits()[1]))
-    with engine.hold():
+    with generate.hold():
         made = []
         for k in range(n):
-            b = _new(s)
+            b = _new_block(s)
             b.start, b.end, b.text = lo + (hi - lo) * k // n, lo + (hi - lo) * (k + 1) // n, text
             made.append(b.uid)
             s.blocks.move(len(s.blocks) - 1, sum(x.start < b.start for x in s.blocks[:-1]))
         s.active, after = find(s, made[0]), find(s, made[-1]) + 1
         if after < len(s.blocks) and "made_fresh" in s.blocks[after]:
-            s.blocks[after]["made_fresh"] = s.blocks[after].uid in timeline.fresh_uids(s)
+            s.blocks[after]["made_fresh"] = s.blocks[after].uid in timeline_motion.fresh_uids(s)
         mark_dirty(obj, *made)
 
 
@@ -224,7 +224,7 @@ def remove(obj, index):
     if index < len(s.blocks):
         mark_dirty(obj, s.blocks[index].uid)
     else:
-        engine.edited(obj)
+        generate.edited(obj)
 
 
 def resize(obj, index, start=None, end=None, follow=False):
@@ -268,23 +268,23 @@ def split(obj, index, frame):
     lo, (start, end) = limits()[0], (s.blocks[index].start, s.blocks[index].end)
     if not start + lo <= frame <= end - lo:
         return None
-    with engine.hold():
-        _new(s)
+    with generate.hold():
+        _new_block(s)
         s.blocks.move(len(s.blocks) - 1, index + 1)
         b, n = s.blocks[index], s.blocks[index + 1]
         n.text, n.start, n.end, n.locked, n.enabled = b.text, frame, end, b.locked, b.enabled
         n["in_place"], n["back_to_start"], b["back_to_start"] = b.in_place, b.back_to_start, False  # the end walks back
         dirty, b.end, s.active = b.dirty, frame, index + 1
-        if _cut(b, n, (frame - start) / (end - start)):
+        if _split_takes(b, n, (frame - start) / (end - start)):
             b.dirty = n.dirty = dirty
-            engine.edited(obj)
+            generate.edited(obj)
         else:
             b.variants = 0
             mark_dirty(obj, b.uid, n.uid)
     return s.blocks[index + 1]
 
 
-def _cut(b, n, at):
+def _split_takes(b, n, at):
     """Give n b's takes from the fraction at on. False without a take or when a half would be too short."""
     m = model.loaded()
     t = takes(b, m.id) if m else None
@@ -312,7 +312,7 @@ def to_clip(b):
     })  # fmt: skip
 
 
-def _from_clip(clip):
+def _parse_clip(clip):
     try:
         d = json.loads(clip)
         if not isinstance(d, dict) or d.get("sprongmotion") != "block":
@@ -331,14 +331,14 @@ def _from_clip(clip):
 
 def paste(obj, clip, after):
     """Insert a block from to_clip's string after block `after` (-1: at the playhead). None if clip holds no block."""
-    d = _from_clip(clip)
+    d = _parse_clip(clip)
     if d is None:
         return None
     text, seconds, seed, color, locked, fresh, in_place, back, t = d
     s, m, (lo, hi) = settings(obj, create=True), model.load(), limits()
     later = chain(s, after) if after >= 0 else range(0)
-    with engine.hold():
-        _new(s)
+    with generate.hold():
+        _new_block(s)
         i = after + 1
         s.blocks.move(len(s.blocks) - 1, i)
         b = s.blocks[i]
@@ -357,7 +357,7 @@ def paste(obj, clip, after):
         shift(s, [k + 1 for k in later], b.end - b.start)
         push(s, i)
         s.active = i
-        engine.edited(obj)
+        generate.edited(obj)
     return s.blocks[i]
 
 
@@ -367,14 +367,14 @@ def mark_dirty(obj, *uids, wait=False):
         i = find(s, uid)
         if i >= 0 and not s.blocks[i].locked:
             s.blocks[i].dirty = True
-    engine.edited(obj, wait=wait)
+    generate.edited(obj, wait=wait)
 
 
 def store(block, codes, model_id):
     """codes: int16 [variants, tokens, layers], kept in the .blend with the model id: reopening or undo only decodes."""
     block["codes"] = codes.reshape(-1).astype(np.int32).tolist()
     block["model"], block["made_text"] = model_id, block.text.strip()
-    block["made_fresh"] = block.uid in timeline.fresh_uids(block.id_data.sprongmotion)
+    block["made_fresh"] = block.uid in timeline_motion.fresh_uids(block.id_data.sprongmotion)
     block.variants, block.tokens = codes.shape[0], codes.shape[1]
     block.remake = False
     if block.variant >= block.variants:

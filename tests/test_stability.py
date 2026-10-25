@@ -5,7 +5,7 @@ import sys
 
 import addon_utils
 import bpy
-from bl_ext.smtest.sprongmotion import sm
+from bl_ext.smtest.sprongmotion import runtime
 
 PKG = "bl_ext.smtest.sprongmotion"
 SLOW = os.environ.get("SM_SLOW") == "1"  # make test-slow: the full stress run
@@ -34,14 +34,15 @@ def test_enable_disable_20_times_also_mid_take():
             obj = bpy.context.active_object
             obj.sprongmotion.variants = 2
             sys.modules[PKG + ".blocks"].add(obj, "a person walks forward", 2)
-            sys.modules[PKG + ".engine"]._state.due[obj.session_uid] = 0
-            sys.modules[PKG + ".engine"]._tick()
-            assert sys.modules[PKG + ".engine"].busy()
-        eng, drawing = sys.modules[PKG + ".engine"], sys.modules[PKG + ".lane_draw"]
+            sys.modules[PKG + ".generate"]._state.due[obj.session_uid] = 0
+            sys.modules[PKG + ".generate"]._tick()
+            assert sys.modules[PKG + ".generate"].busy()
+        generator, drawing = sys.modules[PKG + ".generate"], sys.modules[PKG + ".timeline_draw"]
         loader = sys.modules[PKG + ".model"]
         addon_utils.disable(PKG, handle_error=errors.append)
         assert not leftovers(), leftovers()
-        assert loader._state.model is None and eng._state.job is None and not bpy.app.timers.is_registered(eng._tick)
+        assert loader._state.model is None and generator._state.job is None
+        assert not bpy.app.timers.is_registered(generator._tick)
         assert drawing._handle is None
         addon_utils.enable(PKG, default_set=True, handle_error=errors.append)
         assert mod is not None
@@ -50,17 +51,17 @@ def test_enable_disable_20_times_also_mid_take():
 
 
 def test_a_failing_draw_reports_once(capsys=None):
-    ln, bl = sys.modules[PKG + ".lane"], sys.modules[PKG + ".blocks"]
-    drawing = sys.modules[PKG + ".lane_draw"]
+    ln, bl = sys.modules[PKG + ".timeline_lane"], sys.modules[PKG + ".blocks"]
+    drawing = sys.modules[PKG + ".timeline_draw"]
     armature, bl.armature = bl.armature, lambda context: 1 / 0
     try:
         drawing.draw()
-        assert ln._s.failed
+        assert ln._state.failed
         drawing.draw()
     finally:
         bl.armature = armature
     bpy.ops.wm.read_homefile(use_empty=True)
-    assert not ln._s.failed, "a new file draws the lane again"
+    assert not ln._state.failed, "a new file draws the lane again"
 
 
 def rss_mb():
@@ -92,7 +93,7 @@ class Counter:
         self.free = C.CFUNCTYPE(None, C.c_void_p, C.c_void_p)(free)
 
         threads = sys.modules[PKG + ".model"].THREADS
-        self.hooks = sm.Hooks(threads, C.cast(self.alloc, C.c_void_p).value, C.cast(self.free, C.c_void_p).value)
+        self.hooks = runtime.Hooks(threads, C.cast(self.alloc, C.c_void_p).value, C.cast(self.free, C.c_void_p).value)
 
 
 def cycle(m, seed):
@@ -107,7 +108,7 @@ def cycle(m, seed):
 def test_300_cycles_leak_nothing():
     count = Counter()
     loader = sys.modules[PKG + ".model"]
-    m = sm.Model(loader._state.lib, loader._state.paths[1], C.byref(count.hooks))
+    m = runtime.Model(loader._state.lib, loader._state.paths[1], C.byref(count.hooks))
     try:
         cycle(m, 0)
         live, rss = count.live, rss_mb()

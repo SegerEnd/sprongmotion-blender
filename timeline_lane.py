@@ -4,7 +4,7 @@ import blf
 import bpy
 from bpy.props import StringProperty
 
-from . import block_text, blocks, engine, ops, return_to_start, timeline
+from . import block_operators, block_text, blocks, generate, operators, return_to_start, timeline_motion
 
 HEIGHT, BOTTOM, EDGE, RADIUS, PAD = 34, 40, 6, 5, 8  # pixels at UI scale 1; BOTTOM clears the scrollbar and the markers
 FONT, BASE = 12, 12  # text size, and its baseline above the block's bottom
@@ -21,7 +21,7 @@ class _State:
         self.menu_frame = self.menu_gap = 0
 
 
-_s = _State()
+_state = _State()
 
 
 def ui_scale():
@@ -117,7 +117,7 @@ class _LaneOp:
 
     @classmethod
     def poll(cls, context):
-        return block_text.in_lane(context) and ops.editable(context)  # read-only blocks only show in the lane
+        return block_text.in_lane(context) and block_operators.editable(context)  # read-only blocks only show
 
     def hit(self, context, event):
         return hit(context.region, blocks.settings(context.active_object), event.mouse_region_x, event.mouse_region_y)
@@ -133,8 +133,8 @@ class SM_OT_lane_hover(_LaneOp, bpy.types.Operator):
 
     def invoke(self, context, event):
         state = (context.region.as_pointer(), *self.hit(context, event))
-        if state != _s.hover:
-            _s.hover = state
+        if state != _state.hover:
+            _state.hover = state
             context.region.tag_redraw()
         return {"PASS_THROUGH"}
 
@@ -144,7 +144,7 @@ def _snapshot(s):
     return [(b.uid, b.start, b.end, b.locked, b.dirty, b.remake) for b in s.blocks]
 
 
-def _put(s, snapshot):
+def _restore_places(s, snapshot):
     """The blocks' order and places as in snapshot."""
     for k, (uid, start, end, *_) in enumerate(snapshot):
         s.blocks.move(blocks.find(s, uid), k)
@@ -213,9 +213,9 @@ class SM_OT_lane_click(_LaneOp, bpy.types.Operator):
     def drag(self, obj, x, ctrl=False, alt=False):
         """From the blocks as they were at the click: an edge to the mouse, or a block (Shift: all) moved."""
         s, scene, frame = blocks.settings(obj), bpy.context.scene, x_frame(self.region, x)
-        _put(s, self.snapshot)
+        _restore_places(s, self.snapshot)
         if self.kind == "range":
-            _s.range = (self.uid, round(self.f0), round(frame))
+            _state.range = (self.uid, round(self.f0), round(frame))
             return
         i = blocks.find(s, self.uid)
         snap = None
@@ -239,14 +239,14 @@ class SM_OT_lane_click(_LaneOp, bpy.types.Operator):
     def done(self, obj):
         s = blocks.settings(obj)
         if self.kind == "range":
-            picked, _s.range = _s.range, None
-            why = timeline.remake_range(obj, blocks.find(s, self.uid), *sorted(picked[1:]))
+            picked, _state.range = _state.range, None
+            why = timeline_motion.remake_range(obj, blocks.find(s, self.uid), *sorted(picked[1:]))
             if why:
                 self.report({"WARNING"}, why)
         elif self.shift and self.kind == "body":
             if len(s.blocks) == 1:
                 blocks.snap(obj, 0, (s.blocks[0].start + s.blocks[0].end) // 2)
-            engine.edited(obj)
+            generate.edited(obj)
         elif self.kind == "body":  # a block that now goes on from another one (or none) is made again
             now = blocks.continues(s)
             blocks.mark_dirty(obj, *(uid for uid, prev in now.items() if self.before.get(uid) != prev))
@@ -254,8 +254,8 @@ class SM_OT_lane_click(_LaneOp, bpy.types.Operator):
             blocks.mark_dirty(obj, self.uid)
 
     def restore(self, obj):
-        s, _s.range = blocks.settings(obj), None
-        _put(s, self.snapshot)
+        s, _state.range = blocks.settings(obj), None
+        _restore_places(s, self.snapshot)
         for b, (_, _, _, locked, dirty, remake) in zip(s.blocks, self.snapshot, strict=True):
             b.dirty, b.remake = dirty, remake
             if b.locked != locked:
@@ -284,7 +284,7 @@ class SM_OT_lane_menu(_LaneOp, bpy.types.Operator):
             return {"PASS_THROUGH"}
         if kind == "body":
             blocks.settings(context.active_object).active = i
-        _s.menu_frame, _s.menu_gap = round(x_frame(context.region, event.mouse_region_x)), i
+        _state.menu_frame, _state.menu_gap = round(x_frame(context.region, event.mouse_region_x)), i
         bpy.ops.wm.call_menu(name=(SM_MT_block if kind == "body" else SM_MT_gap).__name__)
         return {"FINISHED"}
 
@@ -325,7 +325,7 @@ class SM_MT_block(bpy.types.Menu):
         layout, b = self.layout, s.blocks[s.active]
         layout.operator("sm.block_edit", text="Edit Text", icon="GREASEPENCIL")
         layout.operator("sm.block_edit", text="Edit in Popup…").popup = True
-        layout.operator("sm.block_split", text="Split Here", icon="CENTER_ONLY").frame = _s.menu_frame
+        layout.operator("sm.block_split", text="Split Here", icon="CENTER_ONLY").frame = _state.menu_frame
         layout.operator("sm.block_copy", text="Copy", icon="COPYDOWN")
         layout.operator("sm.block_paste", text="Paste", icon="PASTEDOWN")
         layout.operator("sm.block_duplicate", text="Duplicate", icon="DUPLICATE")
@@ -348,7 +348,7 @@ class SM_MT_gap(bpy.types.Menu):
     bl_label = "Gap"
 
     def draw(self, _context):
-        self.layout.operator("sm.fill_gap", icon="KEYFRAME").after = _s.menu_gap
+        self.layout.operator("sm.fill_gap", icon="KEYFRAME").after = _state.menu_gap
 
 
 CLASSES = (block_text.SM_OT_block_edit, SM_OT_lane_hover, SM_OT_lane_click, SM_OT_lane_open, SM_OT_lane_menu,
@@ -375,22 +375,22 @@ _keymaps = []
 
 
 def reset():
-    _s.failed = False
+    _state.failed = False
     block_text.reset()
 
 
 def register():
-    global _s
-    _s = _State()
+    global _state
+    _state = _State()
     for c in CLASSES:
         bpy.utils.register_class(c)
-    ops.add_keymaps([("Dopesheet", "DOPESHEET_EDITOR", KEYS)], _keymaps)
+    operators.add_keymaps([("Dopesheet", "DOPESHEET_EDITOR", KEYS)], _keymaps)
 
 
 def unregister():
-    global _s
+    global _state
     reset()
-    _s = _State()
-    ops.remove_keymaps(_keymaps)
+    _state = _State()
+    operators.remove_keymaps(_keymaps)
     for c in reversed(CLASSES):
         bpy.utils.unregister_class(c)

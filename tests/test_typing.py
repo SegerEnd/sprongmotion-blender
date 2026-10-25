@@ -33,7 +33,7 @@ def press(type_):
 
 def paused(h):
     h.last -= block_text.PAUSE
-    block_text._pause()
+    block_text._show_word_list()
 
 
 def text():
@@ -67,7 +67,7 @@ def test_word_list_only_after_the_pause():
     h = start()
     write("the man stro")
     assert h.ghost == "" and h.rows == []
-    block_text._pause()
+    block_text._show_word_list()
     assert h.rows == [], "no list before the pause"
     paused(h)
     assert 0 < len(h.rows) <= 5 and all(w.startswith("stro") for w in h.rows)
@@ -82,7 +82,7 @@ def test_nothing_for_empty_text():
     write(" ")
     paused(h)
     assert (h.ghost, h.rows) == ("", [])
-    assert block_text._suggest(None, None, "") == []
+    assert block_text._popup_suggestions(None, None, "") == []
 
 
 def test_preference_off_shows_nothing():
@@ -93,7 +93,7 @@ def test_preference_off_shows_nothing():
         paused(h)
         write(" the man stro")
         paused(h)
-        assert (h.ghost, h.rows) == ("", []) and block_text._suggest(None, None, "a person sits d") == []
+        assert (h.ghost, h.rows) == ("", []) and block_text._popup_suggestions(None, None, "a person sits d") == []
         assert model.helper() is None, "the sidebar's note then leaves out the nearest words"
     finally:
         model.prefs().typing_help = True
@@ -101,9 +101,9 @@ def test_preference_off_shows_nothing():
 
 def test_popup_list_and_nearest_words():
     start()
-    got = block_text._suggest(None, None, "a person sits d")
+    got = block_text._popup_suggestions(None, None, "a person sits d")
     assert got[0] in model.helper().sentences and got[0].startswith("a person sits down")
-    got = block_text._suggest(None, None, "the man stro")
+    got = block_text._popup_suggestions(None, None, "the man stro")
     assert 0 < len(got) <= 5 and all(g.startswith("the man stro") for g in got)
     assert model.unknown_words("a persn jumsp") == ["persn", "jumsp"]
     assert "person" in model.nearest("persn") and "jump" in model.nearest("jumsp")

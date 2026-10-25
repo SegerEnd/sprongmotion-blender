@@ -1,5 +1,5 @@
 import bpy
-from bl_ext.smtest.sprongmotion import blocks, engine, model, retarget, takes
+from bl_ext.smtest.sprongmotion import blocks, generate, model, retarget, takes
 from test_rest import prefs
 
 
@@ -19,9 +19,9 @@ def test_a_newly_added_last_block_is_keyed_over_its_whole_range():
     obj.sprongmotion.key_density = "UNBAKED"
     for k, text in enumerate(("a person walks forward", "a person waves")):
         blocks.add(obj, text, 2).seed = k + 1
-    engine.run_now(obj)
+    generate.run_now(obj)
     last = blocks.add(obj, "a person does jumping jacks", 3)
-    engine.run_now(obj)
+    generate.run_now(obj)
     try:
         for after in ("HOLD", "REST"):
             for in_place in (False, True):
@@ -41,7 +41,7 @@ def test_a_half_written_bone_map_is_filled_again():
     assert bpy.ops.sm.add_rig() == {"FINISHED"}, model.error()
     obj = bpy.context.active_object
     blocks.add(obj, "a person does jumping jacks", 2)
-    engine.run_now(obj)
+    generate.run_now(obj)
     keyed = set(last_keys(obj))
     while len(obj.sprongmotion.bones) > 2:
         obj.sprongmotion.bones.remove(len(obj.sprongmotion.bones) - 1)

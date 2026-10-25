@@ -1,6 +1,6 @@
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, model, retarget
+from bl_ext.smtest.sprongmotion import blocks, generate, model, retarget
 from test_generate import all_codes, codes, setup
 from undos import one_undo
 
@@ -21,33 +21,33 @@ def heads(obj, frames):
 
 def test_off_and_back_gives_the_same_keys():
     obj = setup()
-    engine.run_now(obj)
+    generate.run_now(obj)
     b = blocks.settings(obj).blocks[1]
     b.dirty = True  # made as an edit makes it: between its kept neighbours
-    engine.run_now(obj)
+    generate.run_now(obj)
     before, made = keys(obj), all_codes(obj)
     for on in (True, False):
         b.fresh = on
-        engine.run_now(obj)
+        generate.run_now(obj)
         assert (keys(obj) == before) != on
     assert keys(obj) == before and all((a == c).all() for a, c in zip(made, all_codes(obj), strict=True))
 
 
 def test_the_take_is_the_block_made_alone():
     obj = setup()
-    engine.run_now(obj)
+    generate.run_now(obj)
     b = blocks.settings(obj).blocks[2]
     b.fresh = True
-    engine.run_now(obj)
+    generate.run_now(obj)
     m = model.load()
     with m.blocks([b.text], [b.tokens * m.fpt / m.fps], [b.seed], [None]) as (alone, _):
         assert np.array_equal(alone.codes(), codes(b))
     first = blocks.settings(obj).blocks[0]
     first.dirty = True
-    engine.run_now(obj)
+    generate.run_now(obj)
     before = all_codes(obj)
     first.fresh = True
-    engine.run_now(obj)
+    generate.run_now(obj)
     assert all((a == c).all() for a, c in zip(before, all_codes(obj), strict=True)), "the first block: nothing"
 
 
@@ -56,7 +56,7 @@ def test_no_step_at_the_seam():
     s = blocks.settings(obj)
     obj.sprongmotion.key_density = "EXACT"
     s.blocks[1].fresh = True
-    engine.run_now(obj)
+    generate.run_now(obj)
     b = s.blocks[1]
     pos = heads(obj, range(b.start - 4, b.end))
     steps = np.linalg.norm(np.diff(pos, axis=0), axis=2).mean(1)
@@ -69,7 +69,7 @@ def test_no_step_at_the_seam():
 
 def test_toggling_makes_one_take_in_one_undo_step():
     obj = setup()
-    engine.run_now(obj)
+    generate.run_now(obj)
     obj.sprongmotion.auto = True
     m, made, run = model.load(), [], model.load().blocks
 

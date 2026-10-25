@@ -5,7 +5,7 @@ import tempfile
 import bpy
 import numpy as np
 import undos
-from bl_ext.smtest.sprongmotion import blocks, engine, model, takes
+from bl_ext.smtest.sprongmotion import blocks, generate, model, takes
 from test_copy import counting
 
 
@@ -18,7 +18,7 @@ def setup(auto=False):
     for k, text in enumerate(("a person walks forward", "a person walks forward", "a person walks forward quickly")):
         blocks.add(obj, text, 2).seed = k + 1  # random seeds: a walk may barely move
     obj.sprongmotion.key_density = "EXACT"
-    engine.run_now(obj)
+    generate.run_now(obj)
     return obj
 
 

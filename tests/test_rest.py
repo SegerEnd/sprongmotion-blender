@@ -1,6 +1,6 @@
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, data, engine, model, retarget, takes
+from bl_ext.smtest.sprongmotion import blocks, generate, model, retarget, rig_data, takes
 from mathutils import Vector
 
 
@@ -19,7 +19,7 @@ def setup(gap=0, after="HOLD"):
     if gap:
         b = blocks.add(obj, "a person waves", 2)
         b.seed, b.start, b.end = 3, b.start + gap, b.end + gap
-    engine.run_now(obj)
+    generate.run_now(obj)
     return obj
 
 
@@ -100,7 +100,7 @@ def test_gaps_between_blocks():
 def test_loop_has_no_ease():
     obj = setup()
     blocks.settings(obj).loop = True
-    engine.run_now(obj)
+    generate.run_now(obj)
     before = keyset(obj)
     prefs().after_block = "REST"
     assert keyset(obj) == before
@@ -108,7 +108,7 @@ def test_loop_has_no_ease():
 
 def test_frozen_bones_and_own_keys_stay():
     obj = setup()
-    data.freeze(obj, ["l_elbow"])
+    rig_data.freeze(obj, ["l_elbow"])
     elbow = {k: v for k, v in keyset(obj).items() if "l_elbow" in k[0]}
     prefs().after_block = "REST"
     assert {k: v for k, v in keyset(obj).items() if "l_elbow" in k[0]} == elbow
@@ -127,12 +127,12 @@ def test_preference_change_makes_no_take():
     obj = setup()
     m = model.load()
     codes = [blocks.codes(b, m.id).tolist() for b in blocks.settings(obj).blocks]
-    made, pushes, take, push = [], [], engine._Job.take, engine.undo_push
-    engine._Job.take = lambda *a: made.append(a)
-    engine.undo_push = pushes.append
+    made, pushes, take, push = [], [], generate._Job.take, generate.undo_push
+    generate._Job.take = lambda *a: made.append(a)
+    generate.undo_push = pushes.append
     try:
         prefs().after_block = "REST"
     finally:
-        engine._Job.take, engine.undo_push = take, push
+        generate._Job.take, generate.undo_push = take, push
     assert not made and pushes == ["SprongMotion: After a Block"]
     assert [blocks.codes(b, m.id).tolist() for b in blocks.settings(obj).blocks] == codes

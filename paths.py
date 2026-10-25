@@ -6,7 +6,7 @@ import hashlib
 import bpy
 import numpy as np
 
-from . import blocks, engine, model, quat, retarget, return_to_start, rig, takes, timeline
+from . import blocks, generate, model, quat, retarget, return_to_start, rig, takes, timeline_motion
 
 DEBOUNCE = 0.3  # seconds of quiet after a curve edit
 SPACING = 0.1  # metres between the points handed to the runtime (at most 1024)
@@ -214,7 +214,7 @@ def _own_headings(obj, speed):
     """The take's own travel heading, decoded without the path once per take (a curve edit keeps the take)."""
     speed_key, uid = hashlib.sha1(speed.tobytes()).hexdigest(), obj.session_uid
     if _state.own.get(uid, ("",))[0] != speed_key:
-        with timeline.whole(obj, path=False) as (motion, _):
+        with timeline_motion.whole(obj, path=False) as (motion, _):
             root = motion.root()[:, [0, 2]] if motion is not None else np.zeros((len(speed), 2))
         own = headings(root, speed, model.loaded().fps) if len(root) == len(speed) else None
         _state.own[uid] = (speed_key, own)
@@ -249,7 +249,7 @@ def refit(obj):
     total = length(got[0]) if got else 0.0
     if got is None or (abs(total - s.path_length) <= REFIT * total and blocks_key(s) == s.path_fit):
         return False
-    with timeline.whole(obj, path=False) as (motion, segs):
+    with timeline_motion.whole(obj, path=False) as (motion, segs):
         speed = motion.speed() if motion is not None else None
     fixed = [b.locked or b.in_place for b, *_ in segs]
     seconds = fit([(f0, f1) for _, f0, f1 in segs], speed, m.fps, total, fixed) if segs else []
@@ -264,12 +264,12 @@ def refit(obj):
 def refresh(obj, push):
     """Fit when needed, else key again when the curve is not what the keys follow. False when nothing was done."""
     s, m = blocks.settings(obj), model.load()
-    if m is None or s is None or engine.pending(obj) or any(timeline.needs_take(b, m.id) for b in s.blocks):
+    if m is None or s is None or generate.pending(obj) or any(timeline_motion.needs_take(b, m.id) for b in s.blocks):
         return False  # without takes yet: the job making them fits when it ends
     if refit(obj):
-        engine.edited(obj)
-        if push and not engine.pending(obj):
-            engine.undo_push("SprongMotion path")
+        generate.edited(obj)
+        if push and not generate.pending(obj):
+            generate.undo_push("SprongMotion path")
     elif key(got[0] if (got := curve_xz(obj)) else None) != s.path_key:
         takes.apply(obj, push=False)
     else:
@@ -294,7 +294,7 @@ def parts(obj):
     got = curve_xz(obj)
     if got is None:
         return {}
-    with timeline.whole(obj) as (motion, segs):
+    with timeline_motion.whole(obj) as (motion, segs):
         root = motion.root()[:, [0, 2]] if motion is not None else None
     return {b.uid: part(got[0], root[f0:f1]) for b, f0, f1 in segs} if root is not None else {}
 
@@ -320,14 +320,14 @@ def attached(obj):
 
 def touch(obj):
     if path(obj) is not None:
-        engine.schedule(_state.due, obj.session_uid, DEBOUNCE, _tick)
+        generate.schedule(_state.due, obj.session_uid, DEBOUNCE, _tick)
 
 
 def _tick():
-    for uid in engine.pop_ready(_state.due):
-        obj = engine.by_uid(uid)
+    for uid in generate.pop_ready(_state.due):
+        obj = generate.by_uid(uid)
         if obj is not None and path(obj) is not None:
-            if engine.pending(obj):
+            if generate.pending(obj):
                 touch(obj)
             else:
                 refresh(obj, push=True)
@@ -336,7 +336,7 @@ def _tick():
 
 def rigs():
     """The file's rigs playing an action with a path."""
-    return [o for o in engine.rigs() if path(o) is not None]
+    return [o for o in generate.rigs() if path(o) is not None]
 
 
 def _moved(update):
@@ -358,7 +358,7 @@ def _on_depsgraph(_scene, depsgraph):
 
 def sync():
     """The depsgraph handler is there only while a rig in the file has a path."""
-    engine.watch_depsgraph(_on_depsgraph, bool(rigs()))
+    generate.watch_depsgraph(_on_depsgraph, bool(rigs()))
 
 
 def on_file():
@@ -371,8 +371,8 @@ def on_file():
 
 def unregister():
     global _state
-    engine.watch_depsgraph(_on_depsgraph, False)
-    engine.stop_timer(_tick)
+    generate.watch_depsgraph(_on_depsgraph, False)
+    generate.stop_timer(_tick)
     _state = _State()
 
 

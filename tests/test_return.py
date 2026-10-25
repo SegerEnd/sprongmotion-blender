@@ -2,7 +2,7 @@
 
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, model, retarget, return_to_start, timeline
+from bl_ext.smtest.sprongmotion import blocks, generate, model, retarget, return_to_start, timeline_motion
 from test_paths import WALK, lengths, pelvis_xy, rig, s_curve
 from undos import NAME, one_undo
 
@@ -108,6 +108,6 @@ def test_a_block_at_the_limit_before_a_block_that_needs_a_take_is_made():
     blocks.resize(obj, 0, end=s.blocks[0].start + blocks.limits()[1] + 50)
     s.blocks[1].text = "a person jumps"
     blocks.mark_dirty(obj, s.blocks[0].uid, s.blocks[1].uid)
-    engine.run_now(obj)
+    generate.run_now(obj)
     assert lengths(obj)[0] == blocks.limits()[1] and not model.error(), (lengths(obj), model.error())
-    assert not any(timeline.needs_take(b, model.load().id) for b in s.blocks)
+    assert not any(timeline_motion.needs_take(b, model.load().id) for b in s.blocks)

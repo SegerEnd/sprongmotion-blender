@@ -3,7 +3,7 @@ would run them."""
 
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, model, paths, retarget
+from bl_ext.smtest.sprongmotion import blocks, generate, model, paths, retarget
 
 NAME = "SprongMotion Rig"
 
@@ -20,12 +20,12 @@ def state():
 def run_timers():
     """Every add-on timer until none is due, at once (background Blender runs no timers)."""
     for _ in range(1000):
-        due = [f for f in (engine._tick, paths._tick, engine._settle) if bpy.app.timers.is_registered(f)]
+        due = [f for f in (generate._tick, paths._tick, generate._settle) if bpy.app.timers.is_registered(f)]
         if not due:
             return
         for f in due:
             bpy.app.timers.unregister(f)
-            engine._state.due.update(dict.fromkeys(engine._state.due, 0))
+            generate._state.due.update(dict.fromkeys(generate._state.due, 0))
             paths._state.due.update(dict.fromkeys(paths._state.due, 0))
             if f() is not None:
                 bpy.app.timers.register(f, first_interval=0)
@@ -38,14 +38,14 @@ def one_undo(edit, label, makes=True):
     run_timers()
     bpy.ops.ed.undo_push(message="before")
     before = state()
-    m, made, push = model.load(), [], engine.undo_push
+    m, made, push = model.load(), [], generate.undo_push
     run = m.blocks
 
     def counted(texts, seconds, seeds, keep, *a):
         made.append(sum(k is None for k in keep))
         return run(texts, seconds, seeds, keep, *a)
 
-    m.blocks, engine.undo_push = counted, lambda message: bpy.ops.ed.undo_push(message=message)
+    m.blocks, generate.undo_push = counted, lambda message: bpy.ops.ed.undo_push(message=message)
     try:
         edit(bpy.data.objects[NAME])
         bpy.ops.ed.undo_push(message=label)
@@ -62,7 +62,7 @@ def one_undo(edit, label, makes=True):
         assert state() == after and not any(made), f"{label}: redo gives the edit back, made {made}"
     finally:
         del m.blocks
-        engine.undo_push = push
+        generate.undo_push = push
 
 
 def edits():

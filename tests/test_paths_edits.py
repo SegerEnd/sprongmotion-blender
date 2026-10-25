@@ -6,14 +6,14 @@ import tempfile
 
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, model, paths, takes, timeline
+from bl_ext.smtest.sprongmotion import blocks, generate, model, paths, takes, timeline_motion
 from test_paths import WALK, lengths, pelvis_xy, rig, s_curve, unwatch, watch
 from undos import NAME, edits, one_undo
 
 
 def mark(i):
     b = blocks.settings(bpy.data.objects[NAME]).blocks[i]
-    return b.remake, b.locked, timeline.needs_take(b, model.load().id)
+    return b.remake, b.locked, timeline_motion.needs_take(b, model.load().id)
 
 
 def test_a_hand_resize_locks_survives_undo_and_reload_and_unlocking_gives_it_back_to_the_fit():
@@ -46,7 +46,7 @@ def test_a_hand_resize_locks_survives_undo_and_reload_and_unlocking_gives_it_bac
     bpy.ops.wm.open_mainfile(filepath=saved)
     assert mark(1) == (True, True, True)
     obj = bpy.data.objects[NAME]
-    engine.run_now(obj)
+    generate.run_now(obj)
     assert mark(1) == (False, True, False), "made once at the new length, then kept"
 
     obj.sprongmotion.auto, fixed[:] = True, []

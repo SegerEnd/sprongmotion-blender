@@ -1,6 +1,6 @@
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, model, retarget, takes, timeline
+from bl_ext.smtest.sprongmotion import blocks, generate, model, retarget, takes, timeline_motion
 
 
 def setup(auto=False):
@@ -29,7 +29,7 @@ def curve(obj, path='pose.bones["l_knee"].rotation_quaternion', index=1):
 def test_generate_chain_and_keys():
     obj = setup()
     obj.sprongmotion.key_density = "EXACT"
-    engine.run_now(obj)
+    generate.run_now(obj)
     s = blocks.settings(obj)
     assert not model.error(), model.error()
     assert all(not b.dirty and b.variants == 1 for b in s.blocks)
@@ -56,18 +56,18 @@ def test_edit_regenerates_block_and_later_only():
 
 def test_same_seed_same_take():
     obj = setup()
-    engine.run_now(obj)
+    generate.run_now(obj)
     before = all_codes(obj)
     for b in blocks.settings(obj).blocks:
         b.dirty = True
-    engine.run_now(obj)
+    generate.run_now(obj)
     assert all((a == b).all() for a, b in zip(before, all_codes(obj), strict=True))
 
 
 def test_timing_stretches_each_take_onto_its_block():
     obj = setup()
-    engine.run_now(obj)
-    with timeline.whole(obj) as (_, segs):
+    generate.run_now(obj)
+    with timeline_motion.whole(obj) as (_, segs):
         frames, times = takes.timing(segs)
     b = blocks.settings(obj).blocks
     assert frames[0] == b[0].start and frames[-1] == b[-1].end

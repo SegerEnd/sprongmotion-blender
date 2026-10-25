@@ -8,8 +8,8 @@ import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
 
-from . import assist, block_text, blocks, engine, lane, return_to_start
-from .lane import BASE, FONT, PAD, RADIUS, STRIP, frame_x, rect, ui_scale
+from . import block_text, blocks, generate, return_to_start, timeline_lane, typing_help
+from .timeline_lane import BASE, FONT, PAD, RADIUS, STRIP, frame_x, rect, ui_scale
 
 SCRUB = 26  # the frame numbers along the top
 ROW = 17  # word list row height
@@ -57,12 +57,12 @@ def _text(x, y, text, color, width):
 
 
 def draw():
-    if lane._s.failed:
+    if timeline_lane._state.failed:
         return
     try:
         _draw(bpy.context)
     except Exception:  # report once: a draw callback runs on every redraw
-        lane._s.failed = True
+        timeline_lane._state.failed = True
         print("SprongMotion: the block lane stopped drawing")
         traceback.print_exc()
 
@@ -82,7 +82,7 @@ def _draw(context):
     blf.enable(0, blf.SHADOW)
     blf.shadow(0, 3, 0, 0, 0, 0.55)
     blf.shadow_offset(0, 1, -1)
-    hover = lane._s.hover[1:] if lane._s.hover[0] == region.as_pointer() else (None, -1)
+    hover = timeline_lane._state.hover[1:] if timeline_lane._state.hover[0] == region.as_pointer() else (None, -1)
     try:
         for i, b in enumerate(s.blocks if s else ()):
             hovered = hover[0] in {"left", "right", "body"} and hover[1] == i
@@ -97,7 +97,7 @@ def _draw(context):
 
 def _draw_add_chip(region, s, hovered, theme):
     y0, y1 = rect()
-    x0, x1, label = lane.add_chip(region, s)
+    x0, x1, label = timeline_lane.add_chip(region, s)
     ink, scale = theme.dopesheet_editor.space.text, ui_scale()
     _line(_rounded(x0, y0, x1, y1, RADIUS * scale), (*ink, 0.7 if hovered else 0.35), scale)
     _text(x0 + PAD * scale, y0 + BASE * scale, label, (*ink, 1.0 if hovered else 0.7), x1 - x0)
@@ -124,7 +124,7 @@ def _draw_block(region, obj, i, b, hovered, theme):
 
 
 def _draw_progress(obj, b, x0, x1, y0):
-    run = engine.progress()
+    run = generate.progress()
     if run and run.rig == obj.session_uid and run.uid == b.uid:
         scale = ui_scale()
         done = (x1 - x0 - 6 * scale) * run.done / run.total
@@ -159,8 +159,8 @@ def _draw_joins(region, b, x0, y0, x1, y1):
         _fill([(x0, mid - h), (x0 + h, mid), (x0, mid + h)], WHITE)
     if after:
         _fill([(x1, mid - h), (x1 - h, mid), (x1, mid + h)], (*AMBER, 1) if b.seam_note else WHITE)
-    if lane._s.range and lane._s.range[0] == b.uid:
-        lo, hi = sorted(frame_x(region, f) for f in lane._s.range[1:])
+    if timeline_lane._state.range and timeline_lane._state.range[0] == b.uid:
+        lo, hi = sorted(frame_x(region, f) for f in timeline_lane._state.range[1:])
         _fill(_rounded(max(lo, x0), y0, min(hi, x1), y1, 0), (1, 1, 1, 0.3))
 
 
@@ -208,27 +208,27 @@ def _draw_typing(region, x0, y0, x1, y1, text, caret, theme):
     x = left + before_caret - scroll
     _line([(x, y0 + 5 * scale), (x, y1 - 5 * scale)], (1, 1, 1, 1), 1.5 * scale, closed=False)
     if help_.rows:
-        word_start = assist.insert(text, caret, "")[1]
+        word_start = typing_help.insert(text, caret, "")[1]
         word_x = left - scroll + blf.dimensions(0, text[:word_start])[0] - PAD * scale
         _draw_rows(region, word_x, y1, help_.rows, help_.pick, theme)
 
 
 def _draw_rows(region, x, y, rows, pick, theme):
     """The word list above the block, below the frame numbers: as many rows as fit."""
-    scale, ui = ui_scale(), theme.user_interface
+    scale, theme_ui = ui_scale(), theme.user_interface
     n = min(len(rows), int((region.height - SCRUB * scale - y - 8 * scale) // (ROW * scale)))
     if n < 1:
         return
     width = max(blf.dimensions(0, r)[0] for r in rows[:n]) + 2 * PAD * scale
     x = max(0.0, min(x, region.width - width))
     y0 = y + 4 * scale
-    _fill(_rounded(x, y0, x + width, y0 + n * ROW * scale + 4 * scale, RADIUS * scale), ui.wcol_menu_back.inner)
+    _fill(_rounded(x, y0, x + width, y0 + n * ROW * scale + 4 * scale, RADIUS * scale), theme_ui.wcol_menu_back.inner)
     for k, row in enumerate(rows[:n]):
         row_y = y0 + 2 * scale + (n - 1 - k) * ROW * scale
         if k == pick:
             highlight = _rounded(x + 2 * scale, row_y, x + width - 2 * scale, row_y + ROW * scale, (RADIUS - 2) * scale)
-            _fill(highlight, ui.wcol_menu_item.inner_sel)
-        ink = ui.wcol_menu_item.text_sel if k == pick else ui.wcol_menu_back.text
+            _fill(highlight, theme_ui.wcol_menu_item.inner_sel)
+        ink = theme_ui.wcol_menu_item.text_sel if k == pick else theme_ui.wcol_menu_back.text
         _text(x + PAD * scale, row_y + 5 * scale, row, (*ink, 1), width)
 
 

@@ -3,7 +3,7 @@
 import bpy
 from bpy_extras import anim_utils
 
-from . import blocks, keys
+from . import blocks, keyframes
 from .retarget import channelbag
 
 FROZEN = "Frozen"  # the bone collection of bones takes leave alone
@@ -26,7 +26,7 @@ def frozen(obj):
     return {b.name for b in coll.bones} if coll else set()
 
 
-def _paint(bone, on):
+def _paint_frozen(bone, on):
     old, new = ("DEFAULT", COLOR) if on else (COLOR, "DEFAULT")
     if bone.color.palette == old:
         bone.color.palette = new
@@ -46,11 +46,11 @@ def freeze(obj, names, on=True):
     for name in names if coll else ():
         bone = arm.bones[name]
         (coll.assign if on else coll.unassign)(bone)
-        _paint(bone, on)
+        _paint_frozen(bone, on)
     if on and obj.animation_data and obj.animation_data.action and obj.animation_data.action_slot:
         for fc in channelbag(obj).fcurves:
-            if fc.data_path.startswith("pose.bones[") and fc.data_path.split('"')[1] in names:
-                keys.retype(fc.keyframe_points, keys.GENERATED, keys.KEYFRAME)
+            if keyframes.bone_name(fc) in names:
+                keyframes.retype(fc.keyframe_points, keyframes.GENERATED, keyframes.KEYFRAME)
     return None
 
 
@@ -62,26 +62,22 @@ def rest_pose(obj, names):
             pb.rotation_quaternion, pb.rotation_axis_angle = (1, 0, 0, 0), (0, 0, 1, 0)
 
 
-def _bone(fc):
-    return fc.data_path.split('"')[1] if fc.data_path.startswith("pose.bones[") else None
-
-
-def _take_keys(obj, cb, bake):
+def _remove_generated_keys(obj, cb, bake):
     """obj: the rig playing the channels, whose bones the generated keys animated go back to rest (None: no rig)."""
     animated = set()
     for fc in list(cb.fcurves):
         if bake:
-            keys.retype(fc.keyframe_points, keys.GENERATED, keys.KEYFRAME)
+            keyframes.retype(fc.keyframe_points, keyframes.GENERATED, keyframes.KEYFRAME)
         else:
-            generated = keys.get(fc.keyframe_points)[1] == keys.GENERATED
-            animated |= {_bone(fc)} if generated.any() else set()
-            keys.remove(fc.keyframe_points, generated)
+            generated = keyframes.get(fc.keyframe_points)[1] == keyframes.GENERATED
+            animated |= {keyframes.bone_name(fc)} if generated.any() else set()
+            keyframes.remove(fc.keyframe_points, generated)
         if not len(fc.keyframe_points):
             cb.fcurves.remove(fc)
     for group in [g for g in cb.groups if not g.channels]:
         cb.groups.remove(group)
     if obj is not None:
-        rest_pose(obj, animated - {_bone(fc) for fc in cb.fcurves} - {None})
+        rest_pose(obj, animated - {keyframes.bone_name(fc) for fc in cb.fcurves} - {None})
 
 
 def clear_action(action, bake=True):
@@ -90,7 +86,7 @@ def clear_action(action, bake=True):
     for slot in action.slots:
         cb = anim_utils.action_get_channelbag_for_slot(action, slot)
         if cb is not None:
-            _take_keys(next((o for o in players if o.animation_data.action_slot == slot), None), cb, bake)
+            _remove_generated_keys(next((o for o in players if o.animation_data.action_slot == slot), None), cb, bake)
     action.property_unset("sprongmotion")
     empty = not any(len(cb.fcurves) for layer in action.layers for strip in layer.strips for cb in strip.channelbags)
     if empty and action.users == len(players):
@@ -112,7 +108,7 @@ def remove_data(obj, bake=True):
     coll = arm.collections.get(FROZEN) if arm.library is None else None
     if coll is not None:
         for bone in coll.bones:
-            _paint(bone, False)
+            _paint_frozen(bone, False)
         arm.collections.remove(coll)
     obj.property_unset("sprongmotion")
 

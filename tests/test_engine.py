@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import bpy
 import numpy as np
 from bl_ext.smtest.sprongmotion import __package__ as pkg
-from bl_ext.smtest.sprongmotion import blocks, engine, model, retarget, timeline, ui
+from bl_ext.smtest.sprongmotion import blocks, generate, model, panels, retarget, timeline_motion
 
 PREFS = bpy.context.preferences.addons[pkg].preferences
 LIB, MODEL = PREFS.library_path, PREFS.model_path
@@ -50,88 +50,88 @@ def test_engine_recovers_from_an_exception():
     write = retarget.write
     retarget.write = lambda *a, **k: 1 / 0
     try:
-        engine.run_now(obj)
+        generate.run_now(obj)
     finally:
         retarget.write = write
-    assert "division by zero" in model.error() and not engine.busy()
-    engine.run_now(obj)
+    assert "division by zero" in model.error() and not generate.busy()
+    generate.run_now(obj)
     assert not model.error() and keys(obj)
 
 
 def test_bad_codes_and_a_missing_bone_fail_safe():
     obj = rig_with_block(auto=False)
-    engine.run_now(obj)
+    generate.run_now(obj)
     b = blocks.settings(obj).blocks[0]
     b["codes"] = [9999] * len(b["codes"])
-    engine.run_now(obj)
-    assert "code" in model.error() and not engine.busy()
+    generate.run_now(obj)
+    assert "code" in model.error() and not generate.busy()
     blocks.mark_dirty(obj, b.uid)
-    engine.run_now(obj)
+    generate.run_now(obj)
     assert not model.error()
     obj.sprongmotion.bones[1].bone = "no such bone"
     obj.sprongmotion.bones[0].bone = "no such bone"
-    engine.run_now(obj)
+    generate.run_now(obj)
     assert not model.error()
 
 
 def test_undo_during_a_take_cancels_it():
     obj = rig_with_block(auto=False)
     obj.sprongmotion.variants = 2
-    engine.edited(obj, force=True)
-    engine._state.due[obj.session_uid] = 0
-    engine._tick()
-    assert engine.busy(obj)
+    generate.edited(obj, force=True)
+    generate._state.due[obj.session_uid] = 0
+    generate._tick()
+    assert generate.busy(obj)
     for handler in bpy.app.handlers.undo_post:
         handler(bpy.context.scene, None)
-    assert not engine.busy() and blocks.settings(obj).blocks[0].variants == 0, "no take stored after the undo"
+    assert not generate.busy() and blocks.settings(obj).blocks[0].variants == 0, "no take stored after the undo"
 
 
 def test_deleting_the_armature_or_loading_a_file_mid_take():
     obj = rig_with_block(auto=False)
     obj.sprongmotion.variants = 2
-    engine.edited(obj, force=True)
-    engine._state.due[obj.session_uid] = 0
-    engine._tick()
+    generate.edited(obj, force=True)
+    generate._state.due[obj.session_uid] = 0
+    generate._tick()
     bpy.data.objects.remove(obj)
-    while engine._tick():
+    while generate._tick():
         pass
-    assert not engine.busy() and not model.error()
+    assert not generate.busy() and not model.error()
     obj = rig_with_block(auto=False)
     obj.sprongmotion.variants = 2
-    engine.edited(obj, force=True)
-    engine._state.due[obj.session_uid] = 0
-    engine._tick()
+    generate.edited(obj, force=True)
+    generate._state.due[obj.session_uid] = 0
+    generate._tick()
     bpy.ops.wm.read_homefile(use_empty=True)
-    assert not engine.busy() and engine._tick() is None
+    assert not generate.busy() and generate._tick() is None
 
 
 def test_codes_from_another_model_are_regenerated():
     obj = rig_with_block(auto=False)
-    engine.run_now(obj)
+    generate.run_now(obj)
     b = blocks.settings(obj).blocks[0]
     b["model"] = "SprongMotion-14M@older"
-    assert timeline.needs_take(b, model.load().id)
-    engine.run_now(obj)
+    assert timeline_motion.needs_take(b, model.load().id)
+    generate.run_now(obj)
     assert b["model"] == model.load().id
 
 
 def test_a_small_edit_and_its_take_are_one_undo_step():
     obj = rig_with_block()
     pushes = []
-    push, engine.undo_push = engine.undo_push, pushes.append
+    push, generate.undo_push = generate.undo_push, pushes.append
     try:
         before = keys(obj)
         assert before and not blocks.settings(obj).blocks[0].dirty, "the take came with the add"
         bpy.ops.sm.block_regenerate(new_seed=True)
-        assert keys(obj) != before and not engine.busy(), "the operator's own undo step holds the new take"
+        assert keys(obj) != before and not generate.busy(), "the operator's own undo step holds the new take"
         obj.sprongmotion.variants = 2
         bpy.ops.sm.block_regenerate(new_seed=True)
-        assert engine.busy() or engine._state.due, "a big job goes to the timer"
-        while engine._tick():
+        assert generate.busy() or generate._state.due, "a big job goes to the timer"
+        while generate._tick():
             pass
         assert pushes == ["SprongMotion take"]
     finally:
-        engine.undo_push = push
+        generate.undo_push = push
     assert np.isfinite(keys(obj)).all()
 
 
@@ -147,7 +147,7 @@ def test_draws_load_nothing():
     blocks.settings(obj).blocks[0].text = "a person does a pirouettez"
     assert model.unknown_words("a person does a pirouettez", look=False), "the edit looked the words up"
     model.unload()
-    for draw in (ui.draw_main, ui.draw_rig, ui.draw_output):
+    for draw in (panels.draw_main, panels.draw_rig, panels.draw_output):
         draw(_Any(), bpy.context)
     type(PREFS).draw(SimpleNamespace(layout=_Any(), after_block="HOLD"), bpy.context)
     assert model.loaded() is None, "a draw loaded the model"
@@ -159,7 +159,7 @@ def test_one_cmd_z_undoes_an_edit_and_its_take_and_nothing_regenerates():
 
     obj = rig_with_block(auto=False)
     blocks.add(obj, "a person waves", 1.5)
-    engine.run_now(obj)
+    generate.run_now(obj)
     obj.sprongmotion.auto = True
     for label, edit in edits():
         one_undo(edit, label)

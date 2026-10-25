@@ -9,7 +9,7 @@ import bpy
 import numpy as np
 from bpy_extras import anim_utils
 
-from . import blocks, data, engine, keys, model, quat, retarget, rig
+from . import blocks, generate, keyframes, model, quat, retarget, rig, rig_data
 
 NEAR = 2  # frames: a block starts where the keys end (or ends where they start again) within this
 SECONDS = 2.0  # of keys read on each side at most
@@ -23,8 +23,8 @@ WARN, STRIDE, WARN_TURN = 0.25, 0.1, 30.0
 DEBOUNCE = 0.3
 
 Spec = namedtuple("Spec", "seam times key")  # which keys a side reads: its seam frame, the scene frames, their hash
-# a context block for timeline.run_blocks, and what joins it to the keys: the seam, the keys' joints at its decoded
-# frames [frames, 22, 3] and their own pose at the seam ({bone: quat}, {bone: loc})
+# A context block for timeline_motion.run_blocks, and what joins it to the keys: the seam, the keys' joints at its
+# decoded frames [frames, 22, 3] and their own pose at the seam ({bone: quat}, {bone: loc})
 Side = namedtuple("Side", "uid text seed codes frames seam joints pose key")
 
 
@@ -35,7 +35,7 @@ class _State:
         self.seen = {}  # rig session_uid -> the block keys last seen
 
 
-_s = _State()
+_state = _State()
 
 
 def why_not(obj, m=None):
@@ -60,21 +60,17 @@ def channelbag(obj):
     return anim_utils.action_get_channelbag_for_slot(ad.action, ad.action_slot)
 
 
-def _bone(fc):
-    return fc.data_path.split('"')[1] if fc.data_path.startswith('pose.bones["') else None
-
-
 def own_frames(obj, names=None):
     """Sorted frames with the rig's own keys (any but the add-on's) on its mapped bones that are not frozen."""
     cb = channelbag(obj)
     if cb is None:
         return np.zeros(0)
-    names = (set(rig.bone_map(obj).values()) if names is None else names) - data.frozen(obj)
+    names = (set(rig.bone_map(obj).values()) if names is None else names) - rig_data.frozen(obj)
     found = [np.zeros(0)]
     for fc in cb.fcurves:
-        if _bone(fc) in names:
-            co, kind = keys.get(fc.keyframe_points)
-            found.append(co[kind != keys.GENERATED, 0])
+        if keyframes.bone_name(fc) in names:
+            co, kind = keyframes.get(fc.keyframe_points)
+            found.append(co[kind != keyframes.GENERATED, 0])
     return np.unique(np.concatenate(found))
 
 
@@ -93,7 +89,7 @@ def selected_gap(obj, frame):
         kp = fc.keyframe_points
         on = np.zeros(len(kp), bool)
         kp.foreach_get("select_control_point", on)
-        picked.append(keys.get(kp)[0][on, 0])
+        picked.append(keyframes.get(kp)[0][on, 0])
     f = np.unique(np.round(np.concatenate(picked)))
     if len(f) < 2:
         return None
@@ -105,11 +101,11 @@ def selected_gap(obj, frame):
 
 def clear(obj, lo, hi):
     """Remove the rig's own keys strictly between lo and hi on its mapped bones that are not frozen."""
-    cb, names = channelbag(obj), set(rig.bone_map(obj).values()) - data.frozen(obj)
+    cb, names = channelbag(obj), set(rig.bone_map(obj).values()) - rig_data.frozen(obj)
     for fc in cb.fcurves if cb else ():
-        if _bone(fc) in names:
-            co, _ = keys.get(fc.keyframe_points)
-            keys.remove(fc.keyframe_points, (co[:, 0] > lo + 0.5) & (co[:, 0] < hi - 0.5))
+        if keyframes.bone_name(fc) in names:
+            co, _ = keyframes.get(fc.keyframe_points)
+            keyframes.remove(fc.keyframe_points, (co[:, 0] > lo + 0.5) & (co[:, 0] < hi - 0.5))
             fc.update()
 
 
@@ -128,22 +124,28 @@ def plan(obj, m):
     if line[0].continues and len(near) and near[-1] >= line[0].start - NEAR and near[-1] - near[0] >= least:
         tokens = min(most, int((near[-1] - near[0]) / step // 2))
         times = np.minimum(line[0].start - step * np.arange(2 * tokens, -1, -1), near[-1])
-        out[0] = _spec(obj, "before", near[-1], times)
+        out[0] = _read_spec(obj, "before", near[-1], times)
     near = frames[frames >= line[-1].end - NEAR]
     if line[-1].continues and len(near) and near[0] <= line[-1].end + NEAR and near[-1] - near[0] >= least:
         tokens = min(most, int((near[-1] - near[0]) / step // 2))
-        out[1] = _spec(obj, "after", near[0], np.maximum(line[-1].end + step * np.arange(2 * tokens + 1), near[0]))
+        out[1] = _read_spec(obj, "after", near[0], np.maximum(line[-1].end + step * np.arange(2 * tokens + 1), near[0]))
     return tuple(out)
 
 
-def _spec(obj, side, seam, times):
+def _read_spec(obj, side, seam, times):
     """A Spec whose hash covers what the read depends on: the map, the frozen bones and the nearby own keys."""
-    parts = [side, float(seam), times.round(4).tobytes(), sorted(rig.bone_map(obj).items()), sorted(data.frozen(obj))]
+    parts = [
+        side,
+        float(seam),
+        times.round(4).tobytes(),
+        sorted(rig.bone_map(obj).items()),
+        sorted(rig_data.frozen(obj)),
+    ]
     cb = channelbag(obj)
     for fc in cb.fcurves if cb else ():
-        if _bone(fc) is not None:
-            co, kind = keys.get(fc.keyframe_points)
-            co = co[kind != keys.GENERATED]
+        if keyframes.bone_name(fc) is not None:
+            co, kind = keyframes.get(fc.keyframe_points)
+            co = co[kind != keyframes.GENERATED]
             f = co[:, 0]
             lo, hi = (times[0], seam) if side == "before" else (seam, times[-1])
             first, last = np.searchsorted(f, lo, "right") - 1, np.searchsorted(f, hi, "left") + 1
@@ -159,11 +161,11 @@ def sides(obj, m):
     target = retarget.Target(obj, m.offsets)
     out = []
     for uid, spec in zip((-1, -2), specs, strict=True):
-        if spec is not None and spec.key not in _s.cache:
-            if len(_s.cache) > 32:
-                _s.cache.clear()
-            _s.cache[spec.key] = _read(obj, target, m, uid, spec)
-        out.append(_s.cache[spec.key] if spec else None)
+        if spec is not None and spec.key not in _state.cache:
+            if len(_state.cache) > 32:
+                _state.cache.clear()
+            _state.cache[spec.key] = _read_side(obj, target, m, uid, spec)
+        out.append(_state.cache[spec.key] if spec else None)
     return tuple(out)
 
 
@@ -179,32 +181,36 @@ def block_keys(s, found):
     return out
 
 
-def _read(obj, target, m, uid, spec):
+def _read_side(obj, target, m, uid, spec):
     """The keys at spec's frames as a Side: joints, codes and the own pose at the seam and the frame past it."""
     before = uid == -1
     times = np.r_[spec.times, spec.seam + (-1 if before else 1), spec.seam]
-    basis, loc, own = _sample(obj, target, times, spec.seam, before)
+    basis, loc, own = _sample_own_keys(obj, target, times, spec.seam, before)
     joints = target.joints(basis, loc, len(times))[:-2]
     codes = m.encode(joints)
     pose = {n: basis[n][-2:] for n in own if n in basis}, {n: loc[n][-2:] for n in own if n in loc}
     return Side(uid, "", 0, codes, 2 * len(codes), spec.seam, joints[: 2 * len(codes)], pose, spec.key)
 
 
-def _sample(obj, target, times, seam, before):
+def _sample_own_keys(obj, target, times, seam, before):
     """The bones' (basis, location, bones with own keys) at times from the rig's own keys alone, held past the seam."""
     cb, basis, loc, own = channelbag(obj), {}, {}, set()
     for name in target.deps(target.map.values()):
         mode = obj.pose.bones[name].rotation_mode
         euler = mode not in {"QUATERNION", "AXIS_ANGLE"}
-        rot, had_rot = _channels(cb, name, "rotation_euler" if euler else "rotation_quaternion", times, seam, before)
-        basis[name] = _euler(rot, mode) if euler else rot[:, [1, 2, 3, 0]] / np.linalg.norm(rot, axis=1)[:, None]
-        loc[name], had_loc = _channels(cb, name, "location", times, seam, before)
+        rot, had_rot = _own_key_values(
+            cb, name, "rotation_euler" if euler else "rotation_quaternion", times, seam, before
+        )
+        basis[name] = (
+            _euler_to_quat(rot, mode) if euler else rot[:, [1, 2, 3, 0]] / np.linalg.norm(rot, axis=1)[:, None]
+        )
+        loc[name], had_loc = _own_key_values(cb, name, "location", times, seam, before)
         if had_rot or had_loc:
             own.add(name)
     return basis, loc, own
 
 
-def _channels(cb, name, prop, times, seam, before):
+def _own_key_values(cb, name, prop, times, seam, before):
     """One bone property's own-key values at times, held past the seam; and whether it had any keys there."""
     n = 4 if prop == "rotation_quaternion" else 3
     out, had = np.zeros((len(times), n)), False
@@ -212,8 +218,8 @@ def _channels(cb, name, prop, times, seam, before):
         out[:, 0] = 1
     for i in range(n):
         fc = cb.fcurves.find(f'pose.bones["{name}"].{prop}', index=i) if cb else None
-        co, kind = keys.get(fc.keyframe_points) if fc else (np.zeros((0, 2)), np.zeros(0))
-        f = co[kind != keys.GENERATED, 0]
+        co, kind = keyframes.get(fc.keyframe_points) if fc else (np.zeros((0, 2)), np.zeros(0))
+        f = co[kind != keyframes.GENERATED, 0]
         f = f[f <= seam + 0.5] if before else f[f >= seam - 0.5]
         if len(f):
             held = np.minimum(times, f.max()) if before else np.maximum(times, f.min())
@@ -221,7 +227,7 @@ def _channels(cb, name, prop, times, seam, before):
     return out, had
 
 
-def _euler(e, order):
+def _euler_to_quat(e, order):
     """Blender's Euler angles [F, 3] (order "XYZ": X first) -> x y z w."""
     q = np.zeros((len(e), 4)) + [0, 0, 0, 1.0]
     for axis in order:
@@ -301,8 +307,8 @@ def ease(target, found, frames, basis, loc, fps):
         rots, locs = side.pose
         for name, q in rots.items():
             if name in basis:
-                a, b = (_log(quat.qmul(q[k], quat.qinv(basis[name][i]))) for k, i in ((1, at), (0, out)))
-                q = quat.qmul(_exp((a + (a - b) * d[:, None]) * w), basis[name])
+                a, b = (_rotation_vector(quat.qmul(q[k], quat.qinv(basis[name][i]))) for k, i in ((1, at), (0, out)))
+                q = quat.qmul(_from_rotation_vector((a + (a - b) * d[:, None]) * w), basis[name])
                 basis[name] = quat.continuous(q / np.linalg.norm(q, axis=1, keepdims=True))
         root = target.map[0]
         if loc is not None and root in locs:
@@ -310,14 +316,14 @@ def ease(target, found, frames, basis, loc, fps):
             loc += (a + (a - b) * d[:, None]) * w
 
 
-def _log(q):
+def _rotation_vector(q):
     """A rotation as its rotation vector (axis times angle)."""
     q = q * (1 if q[3] >= 0 else -1)
     sin = np.linalg.norm(q[:3])
     return q[:3] * (2 * np.arctan2(sin, q[3]) / sin) if sin > 1e-12 else 2 * q[:3]
 
 
-def _exp(v):
+def _from_rotation_vector(v):
     angle = np.linalg.norm(v, axis=-1, keepdims=True)
     axis = np.divide(v, angle, out=np.zeros_like(v), where=angle > 1e-12)
     return np.concatenate([axis * np.sin(angle / 2), np.cos(angle / 2)], -1)
@@ -325,14 +331,14 @@ def _exp(v):
 
 def rigs():
     """The file's rigs whose takes join their keys."""
-    return [o for o in engine.rigs() if any(b.anchor_key.strip("|") for b in blocks.settings(o).blocks)]
+    return [o for o in generate.rigs() if any(b.anchor_key.strip("|") for b in blocks.settings(o).blocks)]
 
 
 def check(obj):
     """Mark blocks dirty whose keys changed since last seen. After a load, undo or redo it only notes what is there."""
     m, s, uid = model.loaded(), blocks.settings(obj), obj.session_uid
     now = block_keys(s, plan(obj, m)) if m and s else {}
-    seen, _s.seen[uid] = _s.seen.get(uid), now
+    seen, _state.seen[uid] = _state.seen.get(uid), now
     if seen is None or now == seen:
         return
     stale = [b.uid for b in s.blocks if b.uid in now and now[b.uid] != b.anchor_key] if s else []
@@ -343,30 +349,30 @@ def check(obj):
 def _on_depsgraph(_scene, depsgraph):
     if any(isinstance(u.id, bpy.types.Action) for u in depsgraph.updates):
         for obj in rigs():
-            engine.schedule(_s.due, obj.session_uid, DEBOUNCE, _tick)
+            generate.schedule(_state.due, obj.session_uid, DEBOUNCE, _tick)
 
 
 def _tick():
-    for uid in engine.pop_ready(_s.due):
-        obj = engine.by_uid(uid)
+    for uid in generate.pop_ready(_state.due):
+        obj = generate.by_uid(uid)
         if obj is not None and obj.type == "ARMATURE":
             check(obj)
-    return 0.05 if _s.due else None
+    return 0.05 if _state.due else None
 
 
 def sync():
     """The depsgraph handler is there only while a rig in the file joins its keys."""
-    engine.watch_depsgraph(_on_depsgraph, bool(rigs()))
+    generate.watch_depsgraph(_on_depsgraph, bool(rigs()))
 
 
 def on_file():
-    _s.due.clear()
-    _s.seen.clear()
+    _state.due.clear()
+    _state.seen.clear()
     sync()
 
 
 def unregister():
-    global _s
-    engine.watch_depsgraph(_on_depsgraph, False)
-    engine.stop_timer(_tick)
-    _s = _State()
+    global _state
+    generate.watch_depsgraph(_on_depsgraph, False)
+    generate.stop_timer(_tick)
+    _state = _State()

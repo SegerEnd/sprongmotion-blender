@@ -3,7 +3,7 @@ import time
 
 import bpy
 import numpy as np
-from bl_ext.smtest.sprongmotion import blocks, engine, model, takes, timeline
+from bl_ext.smtest.sprongmotion import blocks, generate, model, takes, timeline_motion
 from test_generate import all_codes, curve, setup
 
 
@@ -15,13 +15,13 @@ def sampled(obj, frames):
 def test_split_keeps_the_motion():
     obj = setup()
     obj.sprongmotion.key_density = "EXACT"
-    engine.run_now(obj)
+    generate.run_now(obj)
     s = blocks.settings(obj)
     frames, tokens = range(s.blocks[0].start, s.blocks[-1].end), s.blocks[0].tokens
     before = sampled(obj, frames)
     s.blocks[0].locked = True
     assert bpy.ops.sm.block_split(index=0, frame=s.blocks[0].start + 24) == {"FINISHED"}
-    engine.run_now(obj)
+    generate.run_now(obj)
     a, b = s.blocks[0], s.blocks[1]
     assert (a.tokens, b.tokens) == (tokens // 2, tokens // 2) and a.locked and b.locked
     assert np.abs(sampled(obj, frames) - before).max() < 1e-4, "both halves show what the block showed"
@@ -35,7 +35,7 @@ def test_one_block_per_timer_tick_same_takes():
         calls.append(sum(k is None for k in keep))
         return run(texts, seconds, seeds, keep, *a)
 
-    job, m.blocks = engine._Job(obj.session_uid, push=False), counted
+    job, m.blocks = generate._Job(obj.session_uid, push=False), counted
     try:
         while not job.advance():
             pass
@@ -45,7 +45,7 @@ def test_one_block_per_timer_tick_same_takes():
     made = all_codes(obj)
     for b in blocks.settings(obj).blocks:
         b.dirty = True
-    engine.run_now(obj)
+    generate.run_now(obj)
     assert all((a == b).all() for a, b in zip(made, all_codes(obj), strict=True)), "the same takes as one call"
 
 
@@ -55,7 +55,7 @@ def test_edit_to_keys_time():
     obj = setup()
     for text in ("a person waves", "a person runs", "a person turns around"):
         blocks.add(obj, text, 2)
-    engine.run_now(obj)
+    generate.run_now(obj)
     obj.sprongmotion.auto = True
     spent, apply = [], takes.apply
 
@@ -82,10 +82,12 @@ def test_a_take_belongs_to_its_text():
     """A block whose text does not match its take (an undo step, a text written past the update) is made again."""
     obj = setup()
     blocks.add(obj, "a person walks", 2)
-    engine.run_now(obj)
+    generate.run_now(obj)
     b = blocks.settings(obj).blocks[0]
     before = blocks.codes(b, model.load().id).copy()
     b["text"] = "a person stands still"  # the stored text alone: no update, so no dirty mark
-    assert not b.dirty and timeline.needs_take(b, model.load().id)
-    engine.run_now(obj)
-    assert not timeline.needs_take(b, model.load().id) and not np.array_equal(before, blocks.codes(b, model.load().id))
+    assert not b.dirty and timeline_motion.needs_take(b, model.load().id)
+    generate.run_now(obj)
+    assert not timeline_motion.needs_take(b, model.load().id) and not np.array_equal(
+        before, blocks.codes(b, model.load().id)
+    )

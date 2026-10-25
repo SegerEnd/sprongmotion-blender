@@ -129,7 +129,7 @@ class _Shape:
             return None
         found = {"pelvis": p.name}
         for c in sorted(down, key=lambda c: self.reach(c)[0], reverse=True):
-            found.update(_limb(self.side(c, x), LEG, self.chain(c)))
+            found.update(_limb_joints(self.side(c, x), LEG, self.chain(c)))
         top = max(ups, key=lambda c: self.reach(c)[1])
         arms = [c for c in self.kids(p) if self.side(c, x) and c not in down]
         if len({self.side(c, x) for c in arms}) == 2:  # one torso bone for pelvis and chest (Roblox R6)
@@ -162,11 +162,11 @@ class _Shape:
     def arms(self, kids, x):
         found = {}
         for c in sorted(kids, key=lambda c: len(self.subtree(c))):
-            found.update(_limb(self.side(c, x), ARM, self.chain(c)))
+            found.update(_limb_joints(self.side(c, x), ARM, self.chain(c)))
         return found
 
 
-def _limb(side, names, chain):
+def _limb_joints(side, names, chain):
     """A chain onto a limb's joints from the shoulder or hip: only a 4-bone arm has a collar, a 4-bone leg a toe."""
     names = names if names is LEG or len(chain) >= len(names) else names[1:]
     return {f"{side}_{n}": b.name for n, b in zip(names, chain[: len(names)], strict=False)}
@@ -249,7 +249,7 @@ def build_own_rig(context, offsets, name="SprongMotion Rig"):
     for j, joint in enumerate(JOINTS):
         e = arm.edit_bones.new(joint)
         e.head = p[j]
-        e.tail = p[CHILD[j]] if CHILD[j] >= 0 else p[j] + _leaf_dir(p, j)
+        e.tail = p[CHILD[j]] if CHILD[j] >= 0 else p[j] + _leaf_direction(p, j)
     for j, par in enumerate(PARENTS):
         if par >= 0:
             e = arm.edit_bones[JOINTS[j]]
@@ -259,7 +259,7 @@ def build_own_rig(context, offsets, name="SprongMotion Rig"):
     return obj
 
 
-def _leaf_dir(p, j):
+def _leaf_direction(p, j):
     if JOINTS[j] == "head":
         return np.array([0, 0, 0.18])
     d = p[j] - p[PARENTS[j]]

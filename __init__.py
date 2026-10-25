@@ -1,7 +1,7 @@
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, PointerProperty, StringProperty
 
-from . import anchor, engine, lane, lane_draw, model, ops, paths, props, ui
+from . import continue_keys, generate, model, operators, panels, paths, properties, timeline_draw, timeline_lane
 
 
 def _reload(_prefs, _context):
@@ -9,7 +9,7 @@ def _reload(_prefs, _context):
 
 
 def _after_block(_prefs, _context):
-    engine.reapply()
+    generate.reapply()
 
 
 class SMPreferences(bpy.types.AddonPreferences):
@@ -81,71 +81,79 @@ class SMPreferences(bpy.types.AddonPreferences):
 
 @bpy.app.handlers.persistent
 def _cancel(*_args):
-    engine.cancel()
-    lane.reset()
+    generate.cancel()
+    timeline_lane.reset()
 
 
 @bpy.app.handlers.persistent
 def _on_file(*_args):
     _upgrade()
     paths.on_file()
-    anchor.on_file()
+    continue_keys.on_file()
 
 
 @bpy.app.handlers.persistent
 def _undone(*_args):
-    engine.settle(redo=False)
+    generate.settle(redo=False)
 
 
 @bpy.app.handlers.persistent
 def _redone(*_args):
-    engine.settle(redo=True)
+    generate.settle(redo=True)
 
 
 HANDLERS = (bpy.app.handlers.load_pre, bpy.app.handlers.undo_post, bpy.app.handlers.redo_post)
 FILE_HANDLERS = (bpy.app.handlers.load_post, bpy.app.handlers.undo_post, bpy.app.handlers.redo_post)
-CLASSES = (SMPreferences, props.SMBlock, props.SMBone, props.SMSettings, props.SMTimeline, *ops.CLASSES, *ui.CLASSES)
+CLASSES = (
+    SMPreferences,
+    properties.SMBlock,
+    properties.SMBone,
+    properties.SMSettings,
+    properties.SMTimeline,
+    *operators.CLASSES,
+    *panels.CLASSES,
+)
 _keymaps = []
 
 
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
-    bpy.types.Object.sprongmotion = PointerProperty(type=props.SMSettings, override={"LIBRARY_OVERRIDABLE"})
-    bpy.types.Action.sprongmotion = PointerProperty(type=props.SMTimeline)
+    bpy.types.Object.sprongmotion = PointerProperty(type=properties.SMSettings, override={"LIBRARY_OVERRIDABLE"})
+    bpy.types.Action.sprongmotion = PointerProperty(type=properties.SMTimeline)
     for h in HANDLERS:
         h.append(_cancel)
     for h in FILE_HANDLERS:
         h.append(_on_file)
     bpy.app.handlers.undo_post.append(_undone)
     bpy.app.handlers.redo_post.append(_redone)
-    ops.add_keymaps(ops.KEYMAPS, _keymaps)
-    ui.register_menus()
-    lane.register()
-    lane_draw.register()
+    operators.add_keymaps(operators.KEYMAPS, _keymaps)
+    panels.register_menus()
+    timeline_lane.register()
+    timeline_draw.register()
     bpy.app.timers.register(_load, first_interval=0.1)
 
 
 def _upgrade():
     for obj in bpy.data.objects:
         if obj.type == "ARMATURE" and obj.library is None:
-            props.upgrade(obj)
+            properties.upgrade(obj)
 
 
 def _load():
     model.load()  # at startup, outside any draw
     _upgrade()
     paths.on_file()
-    anchor.on_file()
+    continue_keys.on_file()
 
 
 def unregister():
     if bpy.app.timers.is_registered(_load):
         bpy.app.timers.unregister(_load)
-    lane_draw.unregister()
-    lane.unregister()
-    ui.unregister_menus()
-    ops.remove_keymaps(_keymaps)
+    timeline_draw.unregister()
+    timeline_lane.unregister()
+    panels.unregister_menus()
+    operators.remove_keymaps(_keymaps)
     for h in HANDLERS:
         if _cancel in h:
             h.remove(_cancel)
@@ -156,8 +164,8 @@ def unregister():
         if fn in h:
             h.remove(fn)
     paths.unregister()
-    anchor.unregister()
-    engine.shutdown()
+    continue_keys.unregister()
+    generate.shutdown()
     del bpy.types.Object.sprongmotion
     del bpy.types.Action.sprongmotion
     for c in reversed(CLASSES):

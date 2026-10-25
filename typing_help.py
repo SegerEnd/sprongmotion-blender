@@ -13,12 +13,14 @@ MIN_CHARS = 6  # no ghost for less typed text
 MIN_LETTERS = 2  # of the word at the caret before the list
 ROWS = 5
 KINDS = {"TAB": "tab", "RET": "enter", "NUMPAD_ENTER": "enter", "ESC": "esc", "UP_ARROW": "up", "DOWN_ARROW": "down"}
+WORDLISTS = pathlib.Path(__file__).parent / "wordlists"
 _WORD = re.compile(r"[a-z]*$")
 _REST = re.compile(r"[a-z]*")
 
 
 def lines(name):
-    return [s for s in (pathlib.Path(__file__).parent / name).read_text().splitlines() if s.strip()]
+    """The non-empty lines of a word list in wordlists/."""
+    return [s for s in (WORDLISTS / name).read_text().splitlines() if s.strip()]
 
 
 def _unit_vectors(v):

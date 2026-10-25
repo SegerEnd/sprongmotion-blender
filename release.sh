@@ -17,7 +17,7 @@ for pair in "$@"; do
   [ -f "$lib" ] || { echo "skipped $p: no library at $lib"; missing=1; continue; }
   s=$OUT/stage/$p
   rm -rf "$s" && mkdir -p "$s/lib/$p" "$s/model" "$s/licenses"
-  cp ./*.py sentences.txt words.txt "$s/"
+  cp ./*.py "$s/" && cp -R wordlists "$s/"
   awk -v p="$p" '{print} /^blender_version_min/ {print "platforms = [\"" p "\"]"}' blender_manifest.toml \
     > "$s/blender_manifest.toml"
   cp "$lib" "$s/lib/$p/libsprongmotion.${lib##*.}"

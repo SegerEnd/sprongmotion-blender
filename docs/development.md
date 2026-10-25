@@ -53,7 +53,7 @@ files at once, 10), `SM_THREADS` (model threads per Blender, 2 under make), `SM_
 | `timeline_lane.py` | The block lane: hit testing and mouse operators |
 | `timeline_draw.py` | Drawing the block lane |
 | `block_text.py` | Typing a block's text in the block or in a popup |
-| `typing_help.py` | Typing help: the rest of a sentence (`sentences.txt`, ours) ranked by the text encoder, word completion from the model's words (`words.txt`) |
+| `typing_help.py` | Typing help: the rest of a sentence (`wordlists/sentences.txt`, ours) ranked by the text encoder, word completion from the model's words (`wordlists/words.txt`) |
 | `block_operators.py` | The operators that edit blocks |
 | `operators.py` | The other operators and the keymaps |
 | `panels.py` | The sidebar panels (Dope Sheet / Timeline, a pointer in the 3D view), menu entries |

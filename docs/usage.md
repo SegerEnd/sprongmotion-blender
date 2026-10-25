@@ -100,6 +100,6 @@ While you type in a block, the rest of a matching sentence shows in grey after t
 its next word, Esc hides it, typing on goes past it. With no sentence to finish, a pause of 0.3 s lists up to five known
 words that finish the word you type (Up/Down, Tab or Enter). A popup text field cannot draw grey text, so its list holds
 the sentence first, then the words. The selected block's "Not understood" note names known words spelled alike. Preferences >
-Typing Help turns all of it off. `sentences.txt` is our own list of prompts; `words.txt` is the model's vocabulary
+Typing Help turns all of it off. `wordlists/sentences.txt` is our own list of prompts; `wordlists/words.txt` is the model's vocabulary
 without word endings and fragments (macOS spell checker and a dictionary with plain inflections, plus a hand check),
 intersected with the loaded model's vocabulary at load.

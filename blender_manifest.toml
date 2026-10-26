@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "sprongmotion"
-version = "1.0.0"
+version = "1.1.0"
 name = "SprongMotion"
 tagline = "Text to motion for armatures, as prompt blocks on the timeline"
 maintainer = "SegerEnd"
@@ -17,4 +17,4 @@ files = "Load the SprongMotion runtime and model, export BVH files"
 
 [build]
 paths_exclude_pattern = ["__pycache__/", "/.git/", "/.venv/", "/.ruff_cache/", "/dist/", "/tests/", "/Makefile", "/ruff.toml",
-                         "/README.md", "/docs/", "/CHANGELOG.md", "/CONTRIBUTING.md", "/SECURITY.md", "/CITATION.cff", "/release.sh", "/.github/", ".*"]
+                         "/README.md", "/docs/", "/CHANGELOG.md", "/CONTRIBUTING.md", "/SECURITY.md", "/release.sh", "/.github/", ".*"]

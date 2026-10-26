@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 (unreleased)
 
 - Needs the SprongMotion runtime 1.1 (its new API). An older runtime library is refused with a message.
 - Hand Lock: hands on the floor in the motion (push-ups, crawling) stay put and on the floor, also on rigs whose arms

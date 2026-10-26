@@ -16,7 +16,7 @@ retargeted onto your rig and written as keys, in a fraction of a second. No GPU,
 ## Install
 
 1. Download the zip for your system from the [releases](https://github.com/SegerEnd/sprongmotion-blender/releases):
-   `sprongmotion-1.0.0-macos-arm64.zip`, `-linux-x64` or `-windows-x64`.
+   `sprongmotion-1.1.0-macos-arm64.zip`, `-linux-x64` or `-windows-x64`.
 2. In Blender 5.0 or newer: Edit > Preferences > Get Extensions > the arrow menu at the top right > Install from Disk,
    and pick the zip.
 3. Select an armature, open the Dope Sheet or Timeline sidebar (N), type a motion and press Enter.
